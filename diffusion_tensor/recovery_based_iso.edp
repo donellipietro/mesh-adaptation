@@ -1,0 +1,127 @@
+include "utils.idp"
+
+verbosity = 0;
+bool plots = false;
+
+// Options ----
+
+real TOL = 1.5;
+int nitermax = 100;
+real hmin = 1e-2;
+real hmax = 0.5;
+int nbvx = 1e6;
+
+
+// Data ----
+
+// include "../data/data_scenario_1.idp"
+include "../data/data_scenario_2.idp"
+
+
+// Problem discretization ----
+
+// Mesh
+mesh Th = square(20, 20);
+if(plots) plot(Th, wait = true);
+
+// Functional spaces
+fespace Vh(Th, P2);
+fespace VhP0(Th, P0);
+fespace VhP1(Th, P1);
+
+// Discretized diffusion tensor components
+Vh logd11hStar, logd12hStar, logd22hStar;
+VhP1 logd11h, logd12h, logd22h;
+
+// errors
+varf vsqetaK(unused, chiK) = 
+    int2d(Th)(
+        chiK*(
+            square(dx(logd11hStar) - dx(logd11h)) + 2*square(dx(logd12hStar) - dx(logd12h)) + square(dx(logd22hStar) - dx(logd22h)) +
+            square(dy(logd11hStar) - dy(logd11h)) + 2*square(dy(logd12hStar) - dy(logd12h)) + square(dy(logd22hStar) - dy(logd22h))
+        )
+    );
+
+
+// Adaptation loop ----
+
+// Loop initialization
+int niter = 0;
+real eta = 1e9;
+real etamin = 1e9;
+int etacounter = 0; 
+bool firstTime = true;
+
+// Adaptation loop
+while(niter < nitermax && etacounter < 30) {
+
+    // Update evaluation
+    logd11hStar = d11;
+    logd12hStar = d12;
+    logd22hStar = d22;
+    logd11h = d11;
+    logd12h = d12;
+    logd22h = d22;
+
+    // Iteration initialization
+    int Nh = Th.nt;
+
+    // Compute etaK
+    VhP0 sqetaK;
+    sqetaK[] = vsqetaK(0, VhP0);
+    if(plots) plot(sqetaK, cmm = "sqetaK " + niter,  wait=true, fill=true, value=true);
+
+    // Check global error
+    eta = sqrt(sqetaK[].sum);
+
+    // Info
+    cout << "Iteration: " << niter << endl;
+    cout << "TOL: " + TOL << endl;
+    cout << "Nh: " << Nh << endl;
+    cout << "etaK min: " << sqetaK[].min << endl;
+    cout << "etaK max: " << sqetaK[].max << endl;
+    cout << "eta: " + eta << endl;
+    cout << "eta min: " + etamin << endl;
+    cout << "eta counter: " + etacounter << endl;
+    cout << endl;
+
+    // Exit
+    if(eta < TOL){
+        if(eta < etamin){
+            etamin = eta;
+            etacounter = 0;
+        } else {
+            etacounter ++;
+        }
+    } else {
+        if(eta < etamin){
+            etamin = eta;
+        }
+    }
+
+    // Compute hK (new)
+    
+    VhP0 hKold = hTriangle;
+    VhP0 A = area;
+    VhP0 Aref = 1;
+    VhP0 hKnew = pow((TOL^2)/(Nh * Aref * (sqetaK/A)), 1.0/2);
+    // plot(hK, cmm = "hK " + niter, wait=true, fill=true, value=true);
+
+    // Averaging
+    VhP1 hNnew;
+    hNnew[] = averagingNodes(Th, hKnew[], hmin, hmax);
+    if(plots) plot(hNnew, cmm = "hN " + niter, wait=true, fill=true, value=true);
+
+    // Mesh adaptation
+    Th = adaptmesh(Th, hNnew, IsMetric = true, nbvx = nbvx);
+    // if(plots) 
+    plot(Th, cmm = "Th " + niter, wait=1);
+
+    // Solve again
+    niter++;
+
+}
+
+plot(Th, cmm = "Final Th", wait=1);
+
+cout << "Number of triangles: " << Th.nt << endl;

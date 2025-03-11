@@ -1,0 +1,196 @@
+load "lapack"
+
+// Averaging
+
+func real[int] averagingNodes(mesh &Th, real[int] &vh0, real vmin, real vmax) {
+    fespace VhP1(Th, P1);
+    fespace VhP0(Th, P0);
+    VhP1 vh1;
+    VhP0 AK;
+
+    AK = area;
+    real[int] areaSumNode(VhP1.ndof), vhSumNode(VhP1.ndof);
+    areaSumNode = 0;
+    vhSumNode = 0;
+    for(int k=0; k<Th.nt; k++)
+    {
+        for(int i=0; i<3; i++)
+        {
+            int index = Th[k][i];
+            areaSumNode[index] += AK[][k];
+            vhSumNode[index] += AK[][k] * vh0[k];
+        }
+    }
+    for(int n=0; n<VhP1.ndof; n++)
+    {
+        if(areaSumNode[n] > 1e-30){
+            vh1[][n] = vhSumNode[n] / areaSumNode[n];
+        } else{
+            cout << "Error, element with null area!" << endl;
+            break;
+        }
+
+        if(vh1[][n] < vmin){
+            vh1[][n] = vmin;
+        }
+        if(vh1[][n] > vmax){
+            vh1[][n] = vmax;
+        }
+    }
+
+    return(vh1[]);
+}
+
+/*
+mesh Th = square(20, 20);
+fespace VhP1(Th, P1);
+fespace VhP0(Th, P0);
+VhP1 uh1;
+VhP0 uh0;
+
+uh0[][50] = 1.;
+
+uh1[] = averagingNodes(Th, uh0[], 0, 3);
+
+plot(uh0, fill = true, wait = true);
+plot(uh1, fill = true, wait = true);
+*/
+
+
+// Patch
+
+func int[int] getPatch(mesh &Th, int k) {
+    
+    int[int] Chi(Th.nt);
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < Th.nt; j++) {
+            if(!Chi[j]) {
+                if ( (Th[j][0] == Th[k][i]) || (Th[j][1] == Th[k][i]) || (Th[j][2] == Th[k][i]) ) {
+                    // patch.resize(patch.n + 1);
+                    // patch[patch.n - 1] = Th[j];
+                    Chi[j] = true;
+                }
+            }
+        }
+    }
+    
+    int[int] patch(0);
+    for (int j = 0; j < Th.nt; j++) {
+        if(Chi[j]){
+            patch.resize(patch.n + 1);
+            patch[patch.n - 1] = j;
+        }
+    }
+
+    return patch;
+}
+
+/*
+mesh Th = square(20, 20);
+fespace Vh(Th, P0);
+Vh uh;
+
+int k = 200;
+int[int] patch = getPatch(Th, k);
+
+for(int i = 0; i < patch.n; i++) {
+    uh[][patch[i]] = 0.5;
+}
+uh[][k] = 1;
+
+cout << patch << endl;
+
+plot(Th, wait = 1, fill = 0);
+plot(Th, uh, wait = 1, fill = 1);
+plot(Th, wait = 1, fill = 0);
+*/
+
+// LogEuclidean metric utils
+
+func bool logTensorFiled(mesh &Th, real[int][int] &Dh0, real[int][int] &logDh0) {
+    for(int i = 0; i < Dh0[0].n; i++) {
+        real[int, int] Di(2,2);
+        Di(0,0) = Dh0[0][i];
+        Di(0,1) = Dh0[1][i];
+        Di(1,0) = Dh0[1][i];
+        Di(1,1) = Dh0[2][i];
+        complex[int] ev(2);
+        complex[int, int] eV(2, 2);
+        dgeev(Di, ev, eV);
+        real[int] r1i = [real(eV(0,0)), real(eV(1,0))];
+        real[int] r2i = [real(eV(0,1)), real(eV(1,1))];
+        logDh0[0][i] = log(real(ev[0])) * r1i[0]^2 + log(real(ev[1])) * r1i[1]^2;
+        logDh0[1][i] = log(real(ev[0])) * r1i[0]*r2i[0] + log(real(ev[1])) * r1i[1]*r2i[1];
+        logDh0[2][i] = log(real(ev[0])) * r2i[0]^2 + log(real(ev[1])) * r2i[1]^2;
+    }
+    // cout << logDh0 << endl;
+    return(true);
+}
+
+func bool expTensorFiled(mesh &Th, real[int][int] &Dh0, real[int][int] &expDh0) {
+    for(int i = 0; i < Dh0[0].n; i++) {
+        real[int, int] Di(2,2);
+        Di(0,0) = Dh0[0][i];
+        Di(0,1) = Dh0[1][i];
+        Di(1,0) = Dh0[1][i];
+        Di(1,1) = Dh0[2][i];
+        complex[int] ev(2);
+        complex[int, int] eV(2, 2);
+        dgeev(Di, ev, eV);
+        real[int] r1i = [real(eV(0,0)), real(eV(1,0))];
+        real[int] r2i = [real(eV(0,1)), real(eV(1,1))];        
+        expDh0[0][i] = exp(real(ev[0])) * r1i[0]^2 + exp(real(ev[1])) * r1i[1]^2;
+        expDh0[1][i] = exp(real(ev[0])) * r1i[0]*r2i[0] + exp(real(ev[1])) * r1i[1]*r2i[1];
+        expDh0[2][i] = exp(real(ev[0])) * r2i[0]^2 + exp(real(ev[1])) * r2i[1]^2;
+    }
+    return(true);
+}
+
+func bool tensorAveragingNodes(mesh &Th, real[int][int] &Dh0, real[int][int] &Dh0av) {
+
+    real[int][int] logDh0(3);
+    logDh0[0].resize(Th.nt);
+    logDh0[1].resize(Th.nt);
+    logDh0[2].resize(Th.nt);
+    logTensorFiled(Th, Dh0, logDh0);
+
+    int ndof = Dh0av[0].n;
+    real[int][int] logDhav(3);
+    logDhav[0].resize(ndof);
+    logDhav[0] = averagingNodes(Th, logDh0[0], -1e9, 1e9);
+    logDhav[1].resize(ndof);
+    logDhav[1] = averagingNodes(Th, logDh0[1], -1e9, 1e9);
+    logDhav[2].resize(ndof);
+    logDhav[2] = averagingNodes(Th, logDh0[2], -1e9, 1e9);
+
+    expTensorFiled(Th, logDhav, Dh0av);
+    return(true);
+    
+}
+
+
+
+// EVD
+
+func bool EVD(real[int, int] &M, real[int] &ev, real[int, int] &eV) {
+    complex[int] cev(2);
+    complex[int, int] ceV(2, 2);
+    dgeev(M, cev, ceV);
+    if(real(cev[0]) > real(cev[1])){
+        ev[0] = real(cev[0]);
+        ev[1] = real(cev[1]);
+        eV(0,0) = real(ceV(0,0));
+        eV(1,0) = real(ceV(1,0));
+        eV(0,1) = real(ceV(0,1));
+        eV(1,1) = real(ceV(1,1));
+    } else {
+        ev[0] = real(cev[1]);
+        ev[1] = real(cev[0]);
+        eV(0,0) = real(ceV(0,1));
+        eV(1,0) = real(ceV(1,1));
+        eV(0,1) = real(ceV(0,0));
+        eV(1,1) = real(ceV(1,0));
+    }
+    if(ev[0]<=0) ev[0] = 1e-18;
+    if(ev[1]<=0) ev[1] = 1e-18;
+}
