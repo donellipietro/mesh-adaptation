@@ -3,7 +3,8 @@ bool plots = true;
 
 
 // Data ----
-include "data/data_scenario_0.idp"
+include "data/data_poisson.idp"
+// include "data/data_scenario_0.idp"
 // include "data/data_scenario_1.idp"
 // include "data/data_scenario_2.idp"
 
