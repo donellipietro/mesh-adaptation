@@ -5,10 +5,10 @@ bool plots = false;
 
 // Options ----
 
-real TOL = 1.5;
-int nitermax = 100;
+real TOL;
+int nitermax = 20;
 real hmin = 1e-2;
-real hmax = 0.5;
+real hmax = 0.05;
 int nbvx = 1e6;
 
 
@@ -16,6 +16,9 @@ int nbvx = 1e6;
 
 // include "../data/data_scenario_1.idp"
 include "../data/data_scenario_2.idp"
+
+if(scenario == 1) TOL = 15.4; // 15.35, 15.3
+if(scenario == 2) TOL = 17.;  // 16.75, 16.5
 
 
 // Problem discretization ----
@@ -25,20 +28,20 @@ mesh Th = square(20, 20);
 if(plots) plot(Th, wait = true);
 
 // Functional spaces
-fespace Vh(Th, P2);
+fespace Vh(Th, P1);
 fespace VhP0(Th, P0);
-fespace VhP1(Th, P1);
 
 // Discretized diffusion tensor components
-Vh logd11hStar, logd12hStar, logd22hStar;
-VhP1 logd11h, logd12h, logd22h;
+Vh logd11h;
+Vh logd12h;
+Vh logd22h;
 
-// errors
+// gradient norm
 varf vsqetaK(unused, chiK) = 
     int2d(Th)(
         chiK*(
-            square(dx(logd11hStar) - dx(logd11h)) + 2*square(dx(logd12hStar) - dx(logd12h)) + square(dx(logd22hStar) - dx(logd22h)) +
-            square(dy(logd11hStar) - dy(logd11h)) + 2*square(dy(logd12hStar) - dy(logd12h)) + square(dy(logd22hStar) - dy(logd22h))
+            square(dx(logd11h)) + 2*(dx(logd12h))^2 + square(dx(logd22h)) +
+            square(dy(logd11h)) + 2*(dy(logd12h))^2 + square(dy(logd22h))
         )
     );
 
@@ -50,40 +53,22 @@ int niter = 0;
 real eta = 1e9;
 real etamin = 1e9;
 int etacounter = 0; 
-bool firstTime = true;
 
 // Adaptation loop
-while(niter < nitermax && etacounter < 30) {
+while(niter < nitermax && etacounter < 15) {
 
     // Update evaluation
-    logd11hStar = d11;
-    logd12hStar = d12;
-    logd22hStar = d22;
     logd11h = d11;
     logd12h = d12;
     logd22h = d22;
-
-    // Iteration initialization
-    int Nh = Th.nt;
 
     // Compute etaK
     VhP0 sqetaK;
     sqetaK[] = vsqetaK(0, VhP0);
     if(plots) plot(sqetaK, cmm = "sqetaK " + niter,  wait=true, fill=true, value=true);
 
-    // Check global error
+    // Check global gradient norm
     eta = sqrt(sqetaK[].sum);
-
-    // Info
-    cout << "Iteration: " << niter << endl;
-    cout << "TOL: " + TOL << endl;
-    cout << "Nh: " << Nh << endl;
-    cout << "etaK min: " << sqetaK[].min << endl;
-    cout << "etaK max: " << sqetaK[].max << endl;
-    cout << "eta: " + eta << endl;
-    cout << "eta min: " + etamin << endl;
-    cout << "eta counter: " + etacounter << endl;
-    cout << endl;
 
     // Exit
     if(eta < TOL){
@@ -100,22 +85,42 @@ while(niter < nitermax && etacounter < 30) {
     }
 
     // Compute hK (new)
-    
-    VhP0 hKold = hTriangle;
+    int Nh = Th.nt;
     VhP0 A = area;
     VhP0 Aref = 1;
     VhP0 hKnew = pow((TOL^2)/(Nh * Aref * (sqetaK/A)), 0.5);
-    // plot(hK, cmm = "hK " + niter, wait=true, fill=true, value=true);
+    if(plots) plot(hKnew, cmm = "hK " + niter, wait=true, fill=true, value=true);
 
     // Averaging
-    VhP1 hNnew;
+    Vh hNnew;
     hNnew[] = averagingNodes(Th, hKnew[], hmin, hmax);
     if(plots) plot(hNnew, cmm = "hN " + niter, wait=true, fill=true, value=true);
+    /*
+    real hNmax = hNnew[].max;
+    hNnew[] *= hmax/hNmax;
+    for(int n = 0; n<hNnew[].n; n++) {
+        if(hNnew[][n] < hmin) hNnew[][n] = hmin;
+    }
+    if(plots) plot(hNnew, cmm = "hN " + niter, wait=true, fill=true, value=true);
+    */
 
     // Mesh adaptation
     Th = adaptmesh(Th, hNnew, IsMetric = true, nbvx = nbvx);
     // if(plots) 
     plot(Th, cmm = "Th " + niter, wait=1);
+
+    // Current geometry
+    VhP0 hK = hTriangle;
+    cout << "Iteration: " << niter << endl;
+    cout << "Nh: " << Nh << endl;
+    cout << "hmin: " << hK[].min << endl;
+    cout << "hmax: " << hK[].max << endl;
+    cout << "etaK min: " << sqetaK[].min << endl;
+    cout << "etaK max: " << sqetaK[].max << endl;
+    cout << "eta: " + eta << endl;
+    cout << "eta min: " + etamin << endl;
+    cout << "eta counter: " + etacounter << endl;
+    cout << endl;
 
     // Solve again
     niter++;
