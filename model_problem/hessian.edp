@@ -12,6 +12,7 @@ int maxiter = 10;
 
 // Data ----
 
+// include "../data/data_poisson.idp"
 include "../data/data_scenario_0.idp"
 // include "../data/data_scenario_1.idp"
 // include "../data/data_scenario_2.idp"
@@ -45,8 +46,6 @@ problem Poisson(uh, vh, solver = CG, eps = 1e-6) =
     on(4, uh = gD2);
 
 
-
-
 // Adaptation loop ----
 
 int niter = 0;
@@ -62,3 +61,21 @@ if(plots) plot(uh, fill = true, wait = true);
 if(plots) plot(Th, uh, fill = false, wait = true);
 
 cout << "Number of triangles: " << Th.nt << endl;
+
+// Reconstruction error solution ----
+
+Vh uhadapt = uh;
+
+Th = square(200, 200);
+Poisson;
+
+Vh uhsuperfine = uh;
+
+if(plots) plot(uhsuperfine, fill = true, wait = true, cmm = "superfine");
+if(plots) plot(uhadapt, fill = true, wait = true, cmm = "adapted");
+
+Vh residual = uhsuperfine-uhadapt;
+if(plots) plot(residual, fill = true, wait = true, cmm = "residual");
+
+
+cout << "L2 error: " <<  sqrt(int2d(Th)(square(residual))) << endl;

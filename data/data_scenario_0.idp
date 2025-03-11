@@ -1,5 +1,5 @@
 // Force
-func f = 1.;
+func f = 0.;
 
 // Boundary conditions
 func gD1 = 0.;

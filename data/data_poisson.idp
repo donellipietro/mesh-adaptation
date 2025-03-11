@@ -1,16 +1,16 @@
 // Force
-func f = 0.;
+func f = 1.;
 
 // Boundary conditions
 func gD1 = 0.;
-func gD2 = 1.;
+func gD2 = 0.;
 
-// Scenario 2: anisotropic - "quadratic"
-int scenario = 2;
+// Scenario 0: isotropic 
+int scenario = -1;
 func alpha = 1.;
-func gamma = (cos(4*pi*(y - x^2)) + 2);
-func nux   = 1./sqrt(4*x^2 + 1);
-func nuy   = 2*x/sqrt(4*x^2 + 1);
+func gamma = 1;
+func nux   = 1.0;
+func nuy   = 0.0;
 
 // Diffusion tensor components: d11, d12, d22
 func d11 = alpha * (nux^2*gamma + nuy^2/gamma);
