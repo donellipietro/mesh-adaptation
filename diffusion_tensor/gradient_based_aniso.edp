@@ -5,8 +5,10 @@ verbosity = 0;
 bool plots = false;
 
 // Options ----
+
+bool usingpatch = false;
 real TOL;
-int nitermax = 50;
+int nitermax = 15;
 real hmin = 1e-2;
 real hmax = 0.05;
 int nbvx = 1e6;
@@ -17,8 +19,8 @@ int nbvx = 1e6;
 // include "../data/data_scenario_1.idp"
 include "../data/data_scenario_2.idp"
 
-if(scenario == 1) TOL = 2.;
-if(scenario == 2) TOL = 5.;
+if(scenario == 1) TOL = 2.; 
+if(scenario == 2) TOL = 5.; //  5.
 
 
 // Problem discretization ----
@@ -32,9 +34,7 @@ fespace Vh(Th, P1);
 fespace VhP0(Th, P0);
 
 // Discretized diffusion tensor components
-Vh logd11h;
-Vh logd12h;
-Vh logd22h;
+Vh logd11h, logd12h, logd22h;
 
 // errors
 varf vg11K(unused, chiK) = int2d(Th)(chiK*(
@@ -59,20 +59,18 @@ varf vg22K(unused, chiK) = int2d(Th)(chiK*(
 // Loop initialization
 int Nh;
 int niter = 0;
-real eta = 1e9;
-real etamin = 1e9;
-real eta1 = 1e9, eta2 = 1e9;
-real eta1min = 1e9, eta2min = 1e9;
-int etacounter = 0; 
+// real eta = 1e9;
+// real etamin = 1e9;
+// real eta1 = 1e9, eta2 = 1e9;
+// real eta1min = 1e9, eta2min = 1e9;
+// int etacounter = 0; 
 
-bool usingpatch = false;
 
 // Adaptation loop
-while(niter < nitermax && etacounter < 15) {
+while(niter < nitermax) {
 
     // Update
     Nh = Th.nt;
-
     logd11h = d11;
     logd12h = d12;
     logd22h = d22;
@@ -91,25 +89,7 @@ while(niter < nitermax && etacounter < 15) {
     VhP0 APatchK;
     VhP0 G11K, G12K, G22K;
     int[int] patchesSize(Th.nt);
-    for(int k = 0; k < Th.nt; k++) {
-        int[int] patch;
-        if(usingpatch) {
-            int[int] patchTemp = getPatch(Th, k);
-            patch.resize(patchTemp.n);
-            patch = patchTemp;
-        } else {
-            patch.resize(1);
-            patch = [k];
-        }
-        patchesSize[k] = patch.n;
-        for(int i = 0; i < patch.n; i++){
-            int index = patch[i];
-            APatchK[][k] += AK[][index];
-            G11K[][k] += g11K[][index];
-            G12K[][k] += g12K[][index];
-            G22K[][k] += g22K[][index];  
-        }
-    }
+    computeGradientMatrix(Th, APatchK[], patchesSize, usingpatch, g11K[], g12K[], g22K[], G11K[], G12K[], G22K[]);
     if(plots) plot(G11K, cmm = "G11K " + niter,  wait=true, fill=true, value=true);
     if(plots) plot(G12K, cmm = "G12K " + niter,  wait=true, fill=true, value=true);
     if(plots) plot(G22K, cmm = "G22K " + niter,  wait=true, fill=true, value=true);
@@ -151,33 +131,13 @@ while(niter < nitermax && etacounter < 15) {
         MK[1][k] = invsqlambda1K[][k] * r10K[][k]*r20K[][k] + invsqlambda2K[][k] * r11K[][k]*r21K[][k];
         MK[2][k] = invsqlambda1K[][k] * r20K[][k]^2 + invsqlambda2K[][k] * r21K[][k]^2;
         // Compute etaK
-        sqetaK[][k] = sqrt(invsqlambda1K[][k]/invsqlambda2K[][k]) + sqrt(invsqlambda2K[][k]/invsqlambda1K[][k]);
+        // ??
     }
 
     // Global error
-    eta = sqrt(sqetaK[].sum);
+    // eta = sqrt(sqetaK[].sum);
     // eta1 = sqrt(sqeta1K[].sum);
     // eta2 = sqrt(sqeta2K[].sum);
-
-    // Exit
-    // if(eta1 < TOL && eta2 < TOL){
-        /*
-        if(eta1 < eta1min || eta2 < eta2min){
-            eta1min = min(eta1, eta1min);
-            eta2min = min(eta2, eta2min);
-            etacounter = 0;
-        } else {
-            etacounter ++;
-        }
-
-    } else {
-        if(eta1 < eta1min){
-            eta1min = eta1;
-        }
-        if(eta2 < eta2min){
-            eta2min = eta2;
-        }
-    } */
 
     // Averaging the Metric
     Vh m11N, m12N, m22N;
@@ -189,14 +149,12 @@ while(niter < nitermax && etacounter < 15) {
     m11N[] = MN[0];
     m12N[] = MN[1];
     m22N[] = MN[2];
-
     if(plots) plot(m11N, wait = true, fill = true, value = true, cmm = "m11");
     if(plots) plot(m12N, wait = true, fill = true, value = true, cmm = "m12");
     if(plots) plot(m22N, wait = true, fill = true, value = true, cmm = "m22");
 
     // re-meshing
     Th = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], hmin = hmin);
-    // if(plots)
     plot(Th, wait = true);
 
 
@@ -206,21 +164,21 @@ while(niter < nitermax && etacounter < 15) {
     cout << "Nh: " << Nh << endl;
     cout << "hmin: " << hK[].min << endl;
     cout << "hmax: " << hK[].max << endl;
-    cout << "etaK max: " << sqetaK[].max << endl;
-    cout << "etaK min: " << sqetaK[].min << endl;
-    cout << "eta: " + eta << endl;
-    cout << "eta min: " + etamin << endl;
     /*
-    cout << "eta1K max: " << sqeta1K[].max << endl;
-    cout << "eta1K min: " << sqeta1K[].min << endl;
-    cout << "eta1: " + eta1 << endl;
-    cout << "eta1 min: " + eta1min << endl;
-    cout << "eta2K max: " << sqeta2K[].max << endl;
-    cout << "eta2K min: " << sqeta2K[].min << endl;
-    cout << "eta2: " + eta2 << endl;
-    cout << "eta2 min: " + eta2min << endl;
+        cout << "etaK max: " << sqetaK[].max << endl;
+        cout << "etaK min: " << sqetaK[].min << endl;
+        cout << "eta: " + eta << endl;
+        cout << "eta min: " + etamin << endl;
+        cout << "eta1K max: " << sqeta1K[].max << endl;
+        cout << "eta1K min: " << sqeta1K[].min << endl;
+        cout << "eta1: " + eta1 << endl;
+        cout << "eta1 min: " + eta1min << endl;
+        cout << "eta2K max: " << sqeta2K[].max << endl;
+        cout << "eta2K min: " << sqeta2K[].min << endl;
+        cout << "eta2: " + eta2 << endl;
+        cout << "eta2 min: " + eta2min << endl;
+        cout << "eta counter: " + etacounter << endl;
     */
-    cout << "eta counter: " + etacounter << endl;
     cout << endl;
 
     // Update iterator

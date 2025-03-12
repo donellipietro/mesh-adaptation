@@ -193,3 +193,35 @@ func bool tensorAveragingNodes(mesh &Th, real[int][int] &Dh0, real[int][int] &Dh
     return(true);
     
 }
+
+// Aniso
+
+func bool computeGradientMatrix(mesh &Th, real[int] &APatchK, int[int] &patchesSize, bool usingpatch,
+                                real[int] &g11K, real[int] &g12K, real[int] &g22K,
+                                real[int] &G11K, real[int] &G12K, real[int] &G22K) {
+    
+    fespace VhP0(Th, P0);
+
+    // compute
+    VhP0 AK = area;
+    for(int k = 0; k < Th.nt; k++) {
+        int[int] patch;
+        if(usingpatch) {
+            int[int] patchTemp = getPatch(Th, k);
+            patch.resize(patchTemp.n);
+            patch = patchTemp;
+        } else {
+            patch.resize(1);
+            patch = [k];
+        }
+        patchesSize[k] = patch.n;
+        for(int i = 0; i < patch.n; i++){
+            int index = patch[i];
+            APatchK[k] += AK[][index];
+            G11K[k] += g11K[index];
+            G12K[k] += g12K[index];
+            G22K[k] += g22K[index];  
+        }
+    }
+
+}

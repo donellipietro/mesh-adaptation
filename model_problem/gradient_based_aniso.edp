@@ -4,9 +4,10 @@ verbosity = 0;
 bool plots = false;
 
 // Options ----
+
 bool usingpatch = false;
-real TOL = 1.; // 0.1, 0.5, 1
-int nitermax = 50;
+real TOL = 0.5; // 0.1, 0.5, 1
+int nitermax = 15;
 real hmin = 1e-2;
 real hmax = 1;
 int nbvx = 1e6; 
@@ -57,10 +58,10 @@ varf vg22K(unused, chiK) = int2d(Th)(chiK*(square(dy(uh))));
 // Loop initialization
 int Nh;
 int niter = 0;
-real eta = 1e9;
-real eta1 = 1e9, eta2 = 1e9;
-real eta1min = 1e9, eta2min = 1e9;
-int etacounter = 0; 
+// real eta = 1e9;
+// real eta1 = 1e9, eta2 = 1e9;
+// real eta1min = 1e9, eta2min = 1e9;
+// int etacounter = 0; 
 
 
 // Adaptation loop
@@ -87,25 +88,7 @@ while(niter < nitermax) {
     VhP0 APatchK;
     VhP0 G11K, G12K, G22K;
     int[int] patchesSize(Th.nt);
-    for(int k = 0; k < Th.nt; k++) {
-        int[int] patch;
-        if(usingpatch) {
-            int[int] patchTemp = getPatch(Th, k);
-            patch.resize(patchTemp.n);
-            patch = patchTemp;
-        } else {
-            patch.resize(1);
-            patch = [k];
-        }
-        patchesSize[k] = patch.n;
-        for(int i = 0; i < patch.n; i++){
-            int index = patch[i];
-            APatchK[][k] += AK[][index];
-            G11K[][k] += g11K[][index];
-            G12K[][k] += g12K[][index];
-            G22K[][k] += g22K[][index];  
-        }
-    }
+    computeGradientMatrix(Th, APatchK[], patchesSize, usingpatch, g11K[], g12K[], g22K[], G11K[], G12K[], G22K[]);
     if(plots) plot(G11K, cmm = "G11K " + niter,  wait=true, fill=true, value=true);
     if(plots) plot(G12K, cmm = "G12K " + niter,  wait=true, fill=true, value=true);
     if(plots) plot(G22K, cmm = "G22K " + niter,  wait=true, fill=true, value=true);
@@ -147,32 +130,13 @@ while(niter < nitermax) {
         MK[1][k] = invsqlambda1K[][k] * r10K[][k]*r20K[][k] + invsqlambda2K[][k] * r11K[][k]*r21K[][k];
         MK[2][k] = invsqlambda1K[][k] * r20K[][k]^2 + invsqlambda2K[][k] * r21K[][k]^2;
         // Compute etaK
-        sqetaK[][k] = sqrt(invsqlambda1K[][k]*invsqlambda2K[][k]); // ??
+        // ??
     }
 
     // Global error
-    eta = sqrt(sqetaK[].sum);
-    eta1 = sqrt(sqeta1K[].sum);
-    eta2 = sqrt(sqeta2K[].sum);
-
-    // Exit
-    if(eta1 < TOL && eta2 < TOL){
-        if(eta1 < eta1min || eta2 < eta2min){
-            eta1min = min(eta1, eta1min);
-            eta2min = min(eta2, eta2min);
-            etacounter = 0;
-        } else {
-            etacounter ++;
-        }
-
-    } else {
-        if(eta1 < eta1min){
-            eta1min = eta1;
-        }
-        if(eta2 < eta2min){
-            eta2min = eta2;
-        }
-    }
+    // eta = sqrt(sqetaK[].sum);
+    // eta1 = sqrt(sqeta1K[].sum);
+    // eta2 = sqrt(sqeta2K[].sum);
 
     // Averaging the Metric
     VhP1 m11N, m12N, m22N;
@@ -191,7 +155,6 @@ while(niter < nitermax) {
 
     // re-meshing
     Th = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], hmin = hmin);
-    // if(plots)
     plot(Th, wait = true);
 
 
@@ -201,18 +164,20 @@ while(niter < nitermax) {
     cout << "Nh: " << Nh << endl;
     cout << "hmin: " << hK[].min << endl;
     cout << "hmax: " << hK[].max << endl;
-    cout << "etaK max: " << sqetaK[].max << endl;
-    cout << "etaK min: " << sqetaK[].min << endl;
-    cout << "eta: " + eta << endl;
-    cout << "eta1K max: " << sqeta1K[].max << endl;
-    cout << "eta1K min: " << sqeta1K[].min << endl;
-    cout << "eta1: " + eta1 << endl;
-    cout << "eta1 min: " + eta1min << endl;
-    cout << "eta2K max: " << sqeta2K[].max << endl;
-    cout << "eta2K min: " << sqeta2K[].min << endl;
-    cout << "eta2: " + eta2 << endl;
-    cout << "eta2 min: " + eta2min << endl;
-    cout << "eta counter: " + etacounter << endl;
+    /*
+        cout << "etaK max: " << sqetaK[].max << endl;
+        cout << "etaK min: " << sqetaK[].min << endl;
+        cout << "eta: " + eta << endl;
+        cout << "eta1K max: " << sqeta1K[].max << endl;
+        cout << "eta1K min: " << sqeta1K[].min << endl;
+        cout << "eta1: " + eta1 << endl;
+        cout << "eta1 min: " + eta1min << endl;
+        cout << "eta2K max: " << sqeta2K[].max << endl;
+        cout << "eta2K min: " << sqeta2K[].min << endl;
+        cout << "eta2: " + eta2 << endl;
+        cout << "eta2 min: " + eta2min << endl;
+        cout << "eta counter: " + etacounter << endl;
+    */
     cout << endl;
 
     // Update iterator
