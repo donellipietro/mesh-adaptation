@@ -1,0 +1,81 @@
+load "lapack"
+include "utils.idp"
+
+verbosity = 0;
+bool plots = false;
+
+// Options ----
+real hmax = 7.5*1e-2;
+int nbvx = 1e6;
+real beta = 1.5;
+
+
+// Data ----
+
+// include "../data/data_scenario_0.idp"
+include "../data/data_scenario_1.idp"
+// include "../data/data_scenario_2.idp"
+
+
+// Problem discretization ----
+
+// Mesh
+mesh Th = square(20, 20);
+if(plots) plot(Th, wait = true);
+
+// Functional spaces
+fespace VhP1(Th, P1);
+fespace VhP0(Th, P0);
+
+for(int niter = 0; niter < 5; niter ++) {
+
+    func gammabeta = pow(gamma, beta);
+    VhP1 sqlah = alpha*gammabeta;
+    real hmaxtilde = hmax / sqrt(sqlah[].max);
+
+    func sqlambda1 = hmaxtilde^2 * alpha * gammabeta;
+    func sqlambda2 = hmaxtilde^2 / (alpha * gammabeta);
+    func m11 = nux^2 * 1./sqlambda1 + nuy^2 * 1/sqlambda2;
+    func m12 = nux*nuy * (1./sqlambda1 - 1./sqlambda2);
+    func m22 = nuy^2 * 1./sqlambda1 + nux^2 * 1./sqlambda2;
+
+    // re-meshing
+    VhP0 m11K, m12K, m22K;
+    m11K = m11;
+    m12K = m12;
+    m22K = m22;
+    real[int][int] MK(3);
+    MK[0].resize(Th.nt);
+    MK[1].resize(Th.nt);
+    MK[2].resize(Th.nt);
+    MK[0] = m11K[];
+    MK[1] = m12K[];
+    MK[2] = m22K[];
+
+    // plot(m11K, wait = true, fill = true, cmm = "m11K");
+    // plot(m12K, wait = true, fill = true, cmm = "m12K");
+    // plot(m22K, wait = true, fill = true, cmm = "m22K");
+
+    VhP1 m11N, m12N, m22N;
+    real[int][int] MN(3);
+    MN[0].resize(VhP1.ndof);
+    MN[1].resize(VhP1.ndof);
+    MN[2].resize(VhP1.ndof);
+    tensorAveragingNodes(Th, MK, MN);
+    m11N[] = MN[0];
+    m12N[] = MN[1];
+    m22N[] = MN[2];
+
+    // plot(m11N, wait = true, fill = true, cmm = "m11N");
+    // plot(m12N, wait = true, fill = true, cmm = "m12N");
+    // plot(m22N, wait = true, fill = true, cmm = "m22N");
+
+    Th = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], nbvx = nbvx);
+    plot(Th, fill = false, wait = true);
+
+}
+
+plot(Th, cmm = "Adapted mesh", fill = false, wait = true);
+VhP1 gammah = gamma;
+plot(Th, gammah, cmm = "Adapted mesh", fill = false, wait = true);
+cout << "Number of triangles: " << Th.nt << endl;
