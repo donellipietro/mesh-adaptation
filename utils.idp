@@ -1,5 +1,31 @@
 load "lapack"
 
+// EVD
+
+func bool EVD(real[int, int] &M, real[int] &ev, real[int, int] &eV, bool POS) {
+    complex[int] cev(2);
+    complex[int, int] ceV(2, 2);
+    dgeev(M, cev, ceV);
+    // real part
+    ev[0] = real(cev[0]);
+    ev[1] = real(cev[1]);
+    eV(0,0) = real(ceV(0,0));
+    eV(1,0) = real(ceV(1,0));
+    eV(0,1) = real(ceV(0,1));
+    eV(1,1) = real(ceV(1,1));
+    // ordering 
+    if(ev[0] < ev[1]){
+        ev[0] = real(cev[1]);
+        ev[1] = real(cev[0]);
+        eV(0,0) = real(ceV(0,1));
+        eV(1,0) = real(ceV(1,1));
+        eV(0,1) = -real(ceV(0,0));
+        eV(1,1) = -real(ceV(1,0));
+    }
+    if(POS && ev[0]<=0) ev[0] = 1e-18;
+    if(POS && ev[1]<=0) ev[1] = 1e-18;
+}
+
 // Averaging
 
 func real[int] averagingNodes(mesh &Th, real[int] &vh0, real vmin, real vmax) {
@@ -114,14 +140,14 @@ func bool logTensorFiled(mesh &Th, real[int][int] &Dh0, real[int][int] &logDh0) 
         Di(0,1) = Dh0[1][i];
         Di(1,0) = Dh0[1][i];
         Di(1,1) = Dh0[2][i];
-        complex[int] ev(2);
-        complex[int, int] eV(2, 2);
-        dgeev(Di, ev, eV);
-        real[int] r1i = [real(eV(0,0)), real(eV(1,0))];
-        real[int] r2i = [real(eV(0,1)), real(eV(1,1))];
-        logDh0[0][i] = log(real(ev[0])) * r1i[0]^2 + log(real(ev[1])) * r1i[1]^2;
-        logDh0[1][i] = log(real(ev[0])) * r1i[0]*r2i[0] + log(real(ev[1])) * r1i[1]*r2i[1];
-        logDh0[2][i] = log(real(ev[0])) * r2i[0]^2 + log(real(ev[1])) * r2i[1]^2;
+        real[int] ev(2);
+        real[int, int] eV(2, 2);
+        EVD(Di, ev, eV, true);
+        real[int] r1i = [eV(0,0), eV(1,0)];
+        real[int] r2i = [eV(0,1), eV(1,1)];
+        logDh0[0][i] = log(ev[0]) * r1i[0]^2 + log(ev[1]) * r1i[1]^2;
+        logDh0[1][i] = log(ev[0]) * r1i[0]*r2i[0] + log(ev[1]) * r1i[1]*r2i[1];
+        logDh0[2][i] = log(ev[0]) * r2i[0]^2 + log(ev[1]) * r2i[1]^2;
     }
     // cout << logDh0 << endl;
     return(true);
@@ -134,14 +160,14 @@ func bool expTensorFiled(mesh &Th, real[int][int] &Dh0, real[int][int] &expDh0) 
         Di(0,1) = Dh0[1][i];
         Di(1,0) = Dh0[1][i];
         Di(1,1) = Dh0[2][i];
-        complex[int] ev(2);
-        complex[int, int] eV(2, 2);
-        dgeev(Di, ev, eV);
-        real[int] r1i = [real(eV(0,0)), real(eV(1,0))];
-        real[int] r2i = [real(eV(0,1)), real(eV(1,1))];        
-        expDh0[0][i] = exp(real(ev[0])) * r1i[0]^2 + exp(real(ev[1])) * r1i[1]^2;
-        expDh0[1][i] = exp(real(ev[0])) * r1i[0]*r2i[0] + exp(real(ev[1])) * r1i[1]*r2i[1];
-        expDh0[2][i] = exp(real(ev[0])) * r2i[0]^2 + exp(real(ev[1])) * r2i[1]^2;
+        real[int] ev(2);
+        real[int, int] eV(2, 2);
+        EVD(Di, ev, eV, false);
+        real[int] r1i = [eV(0,0), eV(1,0)];
+        real[int] r2i = [eV(0,1), eV(1,1)];
+        expDh0[0][i] = exp(ev[0]) * r1i[0]^2 + exp(ev[1]) * r1i[1]^2;
+        expDh0[1][i] = exp(ev[0]) * r1i[0]*r2i[0] + exp(ev[1]) * r1i[1]*r2i[1];
+        expDh0[2][i] = exp(ev[0]) * r2i[0]^2 + exp(ev[1]) * r2i[1]^2;
     }
     return(true);
 }
@@ -166,31 +192,4 @@ func bool tensorAveragingNodes(mesh &Th, real[int][int] &Dh0, real[int][int] &Dh
     expTensorFiled(Th, logDhav, Dh0av);
     return(true);
     
-}
-
-
-
-// EVD
-
-func bool EVD(real[int, int] &M, real[int] &ev, real[int, int] &eV) {
-    complex[int] cev(2);
-    complex[int, int] ceV(2, 2);
-    dgeev(M, cev, ceV);
-    if(real(cev[0]) > real(cev[1])){
-        ev[0] = real(cev[0]);
-        ev[1] = real(cev[1]);
-        eV(0,0) = real(ceV(0,0));
-        eV(1,0) = real(ceV(1,0));
-        eV(0,1) = real(ceV(0,1));
-        eV(1,1) = real(ceV(1,1));
-    } else {
-        ev[0] = real(cev[1]);
-        ev[1] = real(cev[0]);
-        eV(0,0) = real(ceV(0,1));
-        eV(1,0) = real(ceV(1,1));
-        eV(0,1) = real(ceV(0,0));
-        eV(1,1) = real(ceV(1,0));
-    }
-    if(ev[0]<=0) ev[0] = 1e-18;
-    if(ev[1]<=0) ev[1] = 1e-18;
 }

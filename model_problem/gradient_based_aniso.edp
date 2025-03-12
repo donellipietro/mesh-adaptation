@@ -1,0 +1,226 @@
+include "utils.idp"
+
+verbosity = 0;
+bool plots = false;
+
+// Options ----
+bool usingpatch = false;
+real TOL = 1.; // 0.1, 0.5, 1
+int nitermax = 50;
+real hmin = 1e-2;
+real hmax = 1;
+int nbvx = 1e6; 
+
+
+// Data ----
+
+// include "../data/data_poisson.idp"
+// include "../data/data_scenario_0.idp"
+// include "../data/data_scenario_1.idp"
+include "../data/data_scenario_2.idp"
+
+
+// Problem discretization ----
+
+// Mesh
+mesh Th = square(20, 20);
+if(plots) plot(Th, wait = true);
+
+// Functional spaces
+fespace Vh(Th, P2);
+fespace VhP1(Th, P1);
+fespace VhP0(Th, P0);
+Vh uh, vh;
+
+// Diffusion tensor discretization
+Vh d11h, d12h, d22h;
+
+// Weak-formulation
+problem Poisson(uh, vh, solver = CG, eps = 1e-6) = 
+    int2d(Th)(
+        d11h*dx(uh)*dx(vh) + 
+        d12h*dx(uh)*dy(vh) + 
+        d12h*dy(uh)*dx(vh) +
+        d22h*dy(uh)*dy(vh) ) -
+    int2d(Th)( f*vh ) + 
+    on(1,2,3, uh = gD1) +
+    on(4, uh = gD2);
+
+// Errors
+varf vg11K(unused, chiK) = int2d(Th)(chiK*(square(dx(uh))));
+varf vg12K(unused, chiK) = int2d(Th)(chiK*(dx(uh)*dy(uh)));
+varf vg22K(unused, chiK) = int2d(Th)(chiK*(square(dy(uh))));
+
+
+// Adaptation loop ----
+
+// Loop initialization
+int Nh;
+int niter = 0;
+real eta = 1e9;
+real eta1 = 1e9, eta2 = 1e9;
+real eta1min = 1e9, eta2min = 1e9;
+int etacounter = 0; 
+
+
+// Adaptation loop
+while(niter < nitermax) {
+    
+    // Update
+    Nh = Th.nt;
+    d11h = d11;
+    d12h = d12;
+    d22h = d22;
+    Poisson;
+
+    // Compute gradient
+    VhP0 g11K, g12K, g22K;
+    g11K[] = vg11K(0, VhP0);
+    g12K[] = vg12K(0, VhP0);
+    g22K[] = vg22K(0, VhP0);
+    if(plots) plot(g11K, cmm = "g11K " + niter,  wait=true, fill=true, value=true);
+    if(plots) plot(g12K, cmm = "g12K " + niter,  wait=true, fill=true, value=true);
+    if(plots) plot(g22K, cmm = "g22K " + niter,  wait=true, fill=true, value=true);
+
+    // Compute gradient matrix
+    VhP0 AK = area;
+    VhP0 APatchK;
+    VhP0 G11K, G12K, G22K;
+    int[int] patchesSize(Th.nt);
+    for(int k = 0; k < Th.nt; k++) {
+        int[int] patch;
+        if(usingpatch) {
+            int[int] patchTemp = getPatch(Th, k);
+            patch.resize(patchTemp.n);
+            patch = patchTemp;
+        } else {
+            patch.resize(1);
+            patch = [k];
+        }
+        patchesSize[k] = patch.n;
+        for(int i = 0; i < patch.n; i++){
+            int index = patch[i];
+            APatchK[][k] += AK[][index];
+            G11K[][k] += g11K[][index];
+            G12K[][k] += g12K[][index];
+            G22K[][k] += g22K[][index];  
+        }
+    }
+    if(plots) plot(G11K, cmm = "G11K " + niter,  wait=true, fill=true, value=true);
+    if(plots) plot(G12K, cmm = "G12K " + niter,  wait=true, fill=true, value=true);
+    if(plots) plot(G22K, cmm = "G22K " + niter,  wait=true, fill=true, value=true);
+
+    // Metric at elements
+    VhP0 sqetaK, sqeta1K, sqeta2K, invsqlambda1K, invsqlambda2K, r10K, r11K, r20K, r21K;
+    real[int][int] MK(3);
+    MK[0].resize(Th.nt);
+    MK[1].resize(Th.nt);
+    MK[2].resize(Th.nt);
+    for(int k = 0; k < Th.nt; k++){
+        // Gradient matrix on K
+        real[int, int] GK(2,2);
+        GK(0,0) = G11K[][k];
+        GK(0,1) = G12K[][k];
+        GK(1,0) = G12K[][k];
+        GK(1,1) = G22K[][k];
+        real[int] ev(2);
+        real[int, int] eV(2, 2);
+        // Matrix diagonalization
+        EVD(GK, ev, eV, true);
+        // Metric elements
+        r10K[][k] = eV(0,1);
+        r11K[][k] = eV(1,1);
+        r20K[][k] = eV(0,0);
+        r21K[][k] = eV(1,0);
+        real Aref = 0.25;
+        sqeta1K[][k] = ev[0];
+        sqeta2K[][k] = ev[1];
+        invsqlambda1K[][k] = (2 * Nh * (Aref*patchesSize[k]) * (sqeta2K[][k]/APatchK[][k])) / (TOL^2);
+        invsqlambda2K[][k] = (2 * Nh * (Aref*patchesSize[k]) * (sqeta1K[][k]/APatchK[][k])) / (TOL^2);
+        // Eigenvalues correction
+        if(invsqlambda1K[][k] > 1/hmin^2) invsqlambda1K[][k] = 1/hmin^2;
+        if(invsqlambda2K[][k] > 1/hmin^2) invsqlambda2K[][k] = 1/hmin^2;
+        if(invsqlambda1K[][k] < 1/hmax^2) invsqlambda1K[][k] = 1/hmax^2;
+        if(invsqlambda2K[][k] < 1/hmax^2) invsqlambda2K[][k] = 1/hmax^2;
+        // Metric assembly
+        MK[0][k] = invsqlambda1K[][k] * r10K[][k]^2 + invsqlambda2K[][k] * r11K[][k]^2;
+        MK[1][k] = invsqlambda1K[][k] * r10K[][k]*r20K[][k] + invsqlambda2K[][k] * r11K[][k]*r21K[][k];
+        MK[2][k] = invsqlambda1K[][k] * r20K[][k]^2 + invsqlambda2K[][k] * r21K[][k]^2;
+        // Compute etaK
+        sqetaK[][k] = sqrt(invsqlambda1K[][k]*invsqlambda2K[][k]); // ??
+    }
+
+    // Global error
+    eta = sqrt(sqetaK[].sum);
+    eta1 = sqrt(sqeta1K[].sum);
+    eta2 = sqrt(sqeta2K[].sum);
+
+    // Exit
+    if(eta1 < TOL && eta2 < TOL){
+        if(eta1 < eta1min || eta2 < eta2min){
+            eta1min = min(eta1, eta1min);
+            eta2min = min(eta2, eta2min);
+            etacounter = 0;
+        } else {
+            etacounter ++;
+        }
+
+    } else {
+        if(eta1 < eta1min){
+            eta1min = eta1;
+        }
+        if(eta2 < eta2min){
+            eta2min = eta2;
+        }
+    }
+
+    // Averaging the Metric
+    VhP1 m11N, m12N, m22N;
+    real[int][int] MN(3);
+    MN[0].resize(VhP1.ndof);
+    MN[1].resize(VhP1.ndof);
+    MN[2].resize(VhP1.ndof);
+    tensorAveragingNodes(Th, MK, MN);
+    m11N[] = MN[0];
+    m12N[] = MN[1];
+    m22N[] = MN[2];
+
+    if(plots) plot(m11N, wait = true, fill = true, value = true, cmm = "m11");
+    if(plots) plot(m12N, wait = true, fill = true, value = true, cmm = "m12");
+    if(plots) plot(m22N, wait = true, fill = true, value = true, cmm = "m22");
+
+    // re-meshing
+    Th = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], hmin = hmin);
+    // if(plots)
+    plot(Th, wait = true);
+
+
+    // Current geometry
+    VhP0 hK = hTriangle;
+    cout << "Iteration: " << niter << endl;
+    cout << "Nh: " << Nh << endl;
+    cout << "hmin: " << hK[].min << endl;
+    cout << "hmax: " << hK[].max << endl;
+    cout << "etaK max: " << sqetaK[].max << endl;
+    cout << "etaK min: " << sqetaK[].min << endl;
+    cout << "eta: " + eta << endl;
+    cout << "eta1K max: " << sqeta1K[].max << endl;
+    cout << "eta1K min: " << sqeta1K[].min << endl;
+    cout << "eta1: " + eta1 << endl;
+    cout << "eta1 min: " + eta1min << endl;
+    cout << "eta2K max: " << sqeta2K[].max << endl;
+    cout << "eta2K min: " << sqeta2K[].min << endl;
+    cout << "eta2: " + eta2 << endl;
+    cout << "eta2 min: " + eta2min << endl;
+    cout << "eta counter: " + etacounter << endl;
+    cout << endl;
+
+    // Update iterator
+    niter ++;
+}
+
+plot(Th, cmm = "Adapted mesh", fill = false, wait = true);
+plot(uh, fill = true, wait = true);
+plot(Th, uh, fill = false, wait = true);
+
+cout << "Number of triangles: " << Th.nt << endl;
