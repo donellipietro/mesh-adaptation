@@ -8,9 +8,9 @@ bool plots = false;
 
 bool usingpatch = false;
 real TOL = 0.5; // 0.25, 0.5, 1
-int nitermax = 30;
-real hmin = 1e-2;
-real hmax = 0.05;
+int nitermax = 200;
+real hmin;
+real hmax = 1;
 int nbvx = 1e6;
 
 
@@ -18,6 +18,9 @@ int nbvx = 1e6;
 
 include "../data/data_scenario_1.idp"
 // include "../data/data_scenario_2.idp"
+
+if(scenario == 1) hmin = 1e-2; // or 8*1e-3
+if(scenario == 2) hmin = 5*1e-3;
 
 
 // Problem discretization ----
@@ -54,24 +57,78 @@ varf vg22K(unused, chiK) = int2d(Th)(chiK*(
     square(dy(logd22hStar)-dy(logd22h))
 ));
 
+// errors
+varf vsqetaK(unused, chiK) = 
+    int2d(Th)(
+        chiK*(
+            square(dx(logd11hStar) - dx(logd11h)) + 2*square(dx(logd12hStar) - dx(logd12h)) + square(dx(logd22hStar) - dx(logd22h)) +
+            square(dy(logd11hStar) - dy(logd11h)) + 2*square(dy(logd12hStar) - dy(logd12h)) + square(dy(logd22hStar) - dy(logd22h))
+        )
+    );
+
 
 // Adaptation loop ----
 
 // Loop initialization
 int Nh;
 int niter = 0;
+real eta = 1e9;
+real etamin = 1e9;
+int etacounter = 0; 
+real TOLint = TOL;
+int abovecounter = 0; 
 
 // Adaptation loop
-while(niter < nitermax) {
+while(niter < nitermax && etacounter < 30) {
 
     // Update
     Nh = Th.nt;
-    logd11h = d11;
-    logd12h = d12;
-    logd22h = d22;
-    logd11hStar = d11;
-    logd12hStar = d12;
-    logd22hStar = d22;
+    logd11h = logd11;
+    logd12h = logd12;
+    logd22h = logd22;
+    logd11hStar = logd11;
+    logd12hStar = logd12;
+    logd22hStar = logd22;
+
+    // Compute etaK
+    VhP0 sqetaK;
+    sqetaK[] = vsqetaK(0, VhP0);
+    if(plots) plot(sqetaK, cmm = "sqetaK " + niter,  wait=true, fill=true, value=true);
+
+    // Check global error
+    eta = sqrt(sqetaK[].sum);
+
+    // Exit
+    if(eta < TOL){
+        if(eta < etamin){
+            etamin = eta;
+            etacounter = 0;
+        } else {
+            etacounter ++;
+        }
+    } else {
+        abovecounter ++;
+        if(abovecounter > 10) {
+            TOLint = TOLint*0.75;
+            abovecounter = 0;
+        }
+        if(eta < etamin){
+            etamin = eta;
+        }
+    }
+
+    // Info
+    cout << "Iteration: " << niter << endl;
+    cout << "TOL: " + TOL << endl;
+    cout << "TOLint: " + TOLint << endl;
+    cout << "above counter: " + abovecounter << endl;
+    cout << "Nh: " << Nh << endl;
+    cout << "etaK min: " << sqetaK[].min << endl;
+    cout << "etaK max: " << sqetaK[].max << endl;
+    cout << "eta: " + eta << endl;
+    cout << "eta min: " + etamin << endl;
+    cout << "eta counter: " + etacounter << endl;
+    cout << endl;
 
     // Compute gradient
     VhP0 g11K, g12K, g22K;
@@ -93,7 +150,7 @@ while(niter < nitermax) {
     if(plots) plot(G22K, cmm = "G22K " + niter,  wait=true, fill=true, value=true);
 
     // Metric at elements
-    VhP0 sqetaK, sqeta1K, sqeta2K, invsqlambda1K, invsqlambda2K, r10K, r11K, r20K, r21K;
+    VhP0 sqeta1K, sqeta2K, invsqlambda1K, invsqlambda2K, r10K, r11K, r20K, r21K;
     real[int][int] MK(3);
     MK[0].resize(Th.nt);
     MK[1].resize(Th.nt);
@@ -117,8 +174,8 @@ while(niter < nitermax) {
         real Aref = 0.25;
         sqeta1K[][k] = ev[0];
         sqeta2K[][k] = ev[1];
-        invsqlambda1K[][k] = (2 * Nh * (Aref*patchesSize[k]) * (sqeta2K[][k]/APatchK[][k])) / (TOL^2);
-        invsqlambda2K[][k] = (2 * Nh * (Aref*patchesSize[k]) * (sqeta1K[][k]/APatchK[][k])) / (TOL^2);
+        invsqlambda1K[][k] = (2 * Nh * (Aref*patchesSize[k]) * (sqeta2K[][k]/APatchK[][k])) / (TOLint^2);
+        invsqlambda2K[][k] = (2 * Nh * (Aref*patchesSize[k]) * (sqeta1K[][k]/APatchK[][k])) / (TOLint^2);
         // Eigenvalues correction
         if(invsqlambda1K[][k] > 1/hmin^2) invsqlambda1K[][k] = 1/hmin^2;
         if(invsqlambda2K[][k] > 1/hmin^2) invsqlambda2K[][k] = 1/hmin^2;
@@ -148,15 +205,6 @@ while(niter < nitermax) {
     Th = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], hmin = hmin);
     if(plots) plot(Th, wait = true);
 
-
-    // Current geometry
-    VhP0 hK = hTriangle;
-    cout << "Iteration: " << niter << endl;
-    cout << "Nh: " << Nh << endl;
-    cout << "hmin: " << hK[].min << endl;
-    cout << "hmax: " << hK[].max << endl;
-    cout << endl;
-
     // Update iterator
     niter ++;
 }
@@ -166,3 +214,24 @@ Vh gammah = gamma;
 plot(Th, gammah, cmm = "Adapted mesh", fill = false, wait = true);
 
 cout << "Number of triangles: " << Th.nt << endl;
+
+mesh ThHR = square(200, 200);
+if(plots) plot(Th, wait = true);
+
+fespace V(ThHR, P1);
+V logd11hadapt, logd12hadapt, logd22hadapt;
+V logd11htrue, logd12htrue, logd22htrue;
+
+logd11hadapt = logd11h;
+logd12hadapt = logd12h;
+logd22hadapt = logd22h;
+
+logd11htrue = logd11;
+logd12htrue = logd12;
+logd22htrue = logd22;
+
+eta = sqrt(int2d(Th)(
+    square(dx(logd11htrue) - dx(logd11hadapt)) + 2*square(dx(logd12htrue) - dx(logd12hadapt)) + square(dx(logd22htrue) - dx(logd22hadapt)) +
+    square(dy(logd11htrue) - dy(logd11hadapt)) + 2*square(dy(logd12htrue) - dy(logd12hadapt)) + square(dy(logd22htrue) - dy(logd22hadapt))
+));
+cout << "Eta: " << eta << endl;
