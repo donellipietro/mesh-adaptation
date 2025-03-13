@@ -5,16 +5,18 @@ bool plots = false;
 
 // Options ----
 
-real TOL = 0.15;
+real TOL = 0.05;
 int nitermax = 200;
-real hmin = 1e-3;
-real hmax = 0.05;
+real hmin = 5*1e-3;
+real hmax = 1;
 int nbvx = 1e6;
 
 
 // Data ----
 
-include "../data/data_scenario_1.idp"
+// include "../data/data_poisson.idp"
+include "../data/data_scenario_0.idp"
+// include "../data/data_scenario_1.idp"
 // include "../data/data_scenario_2.idp"
 
 
@@ -25,30 +27,36 @@ mesh Th = square(20, 20);
 if(plots) plot(Th, wait = true);
 
 // Functional spaces
-fespace Vh(Th, P1);
+fespace Vh(Th, P2);
+fespace VhP1(Th, P1);
 fespace VhP0(Th, P0);
+Vh uh, vh;
 
-// Discretized diffusion tensor components
-Vh logd11h;
-Vh logd12h;
-Vh logd22h;
+// Diffusion tensor discretization
+Vh d11h, d12h, d22h;
+
+// Weak-formulation
+problem Poisson(uh, vh, solver = CG, eps = 1e-6) = 
+    int2d(Th)(
+        d11h*dx(uh)*dx(vh) + 
+        d12h*dx(uh)*dy(vh) + 
+        d12h*dy(uh)*dx(vh) +
+        d22h*dy(uh)*dy(vh) ) -
+    int2d(Th)( f*vh ) + 
+    on(1,2,3, uh = gD1) +
+    on(4, uh = gD2);
+
 
 // gradient norm
-varf vsqetaK(unused, chiK) = 
-    int2d(Th)(
-        chiK*(
-            square(dx(logd11h)) + 2*square(dx(logd12h)) + square(dx(logd22h)) +
-            square(dy(logd11h)) + 2*square(dy(logd12h)) + square(dy(logd22h))
-        )
-    );
+varf vsqetaK(unused, chiK) = int2d(Th)( chiK*(square(dx(uh)) + square(dy(uh))) );
 
 
 // Adaptation loop ----
 
 // Loop initialization
 int niter = 0;
-real etaKmax = 1e9;
-real etaKmaxmin = 1e9;
+real etaKmean = 1e9;
+real etaKmeanmin = 1e9;
 int etacounter = 0;
 real TOLint = TOL;
 int abovecounter = 0; 
@@ -58,21 +66,22 @@ while(niter < nitermax && etacounter < 15) {
 
     // Update evaluation
     int Nh = Th.nt;
-    logd11h = logd11;
-    logd12h = logd12;
-    logd22h = logd22;
+    d11h = d11;
+    d12h = d12;
+    d22h = d22;
+    Poisson;
 
     // Compute etaK
     VhP0 etaK;
     etaK[] = vsqetaK(0, VhP0);
     etaK = sqrt(etaK);
-    if(plots) plot(etaK, cmm = "sqetaK " + niter,  wait=false, fill=true, value=true);
+    if(plots) plot(etaK, cmm = "etaK " + niter,  wait=false, fill=true, value=true);
 
     // Exit
-    etaKmax = etaK[].max;
-    if(etaKmax < TOL){
-        if(etaKmax < etaKmaxmin){
-            etaKmaxmin = etaKmax;
+    etaKmean = etaK[].sum / etaK[].n;
+    if(etaKmean < TOL){
+        if(etaKmean < etaKmeanmin){
+            etaKmeanmin = etaKmean;
             etacounter = 0;
         } else {
             etacounter ++;
@@ -80,11 +89,11 @@ while(niter < nitermax && etacounter < 15) {
     } else {
         abovecounter ++;
         if(abovecounter > 10) {
-            TOLint = TOLint*0.9;
+            TOLint = TOLint*0.5;
             abovecounter = 0;
         }
-        if(etaKmax < etaKmaxmin){
-            etaKmaxmin = etaKmax;
+        if(etaKmean < etaKmeanmin){
+            etaKmeanmin = etaKmean;
         }
     }
 
@@ -98,9 +107,9 @@ while(niter < nitermax && etacounter < 15) {
     cout << "hmin: " << hK[].min << endl;
     cout << "hmax: " << hK[].max << endl;
     cout << "etaK min: " << etaK[].min << endl;
-    cout << "etaK mean: " << etaK[].sum / etaK[].n << endl;
-    cout << "etaK max: " << etaKmax << endl;
-    cout << "etaK max min: " << etaKmaxmin << endl;
+    cout << "etaK mean: " << etaKmean << endl;
+    cout << "etaK max: " << etaK[].max << endl;
+    cout << "etaK mean min: " << etaKmeanmin << endl;
     cout << "eta counter: " + etacounter << endl;
     cout << endl;
 
@@ -111,7 +120,7 @@ while(niter < nitermax && etacounter < 15) {
     if(plots) plot(hKnew, cmm = "hK " + niter, wait=true, fill=true, value=true);
 
     // Averaging
-    Vh hNnew;
+    VhP1 hNnew;
     hNnew[] = averagingNodes(Th, hKnew[], hmin, hmax);
     if(plots) plot(hNnew, cmm = "hN " + niter, wait=true, fill=true, value=true);
 
@@ -125,7 +134,7 @@ while(niter < nitermax && etacounter < 15) {
 }
 
 plot(Th, cmm = "Final Th", wait=1);
-Vh gammah = gamma;
-plot(Th, gammah, cmm = "Final Th", wait=1);
+plot(Th, uh, cmm = "Final Th", wait=1);
+plot(uh, cmm = "Final Th", wait=1, fill = true);
 
 cout << "Number of triangles: " << Th.nt << endl;
