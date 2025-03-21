@@ -145,9 +145,9 @@ func bool logTensorFiled(mesh &Th, real[int][int] &Dh0, real[int][int] &logDh0) 
         EVD(Di, ev, eV, true);
         real[int] r1i = [eV(0,0), eV(1,0)];
         real[int] r2i = [eV(0,1), eV(1,1)];
-        logDh0[0][i] = log(ev[0]) * r1i[0]^2 + log(ev[1]) * r1i[1]^2;
-        logDh0[1][i] = log(ev[0]) * r1i[0]*r2i[0] + log(ev[1]) * r1i[1]*r2i[1];
-        logDh0[2][i] = log(ev[0]) * r2i[0]^2 + log(ev[1]) * r2i[1]^2;
+        logDh0[0][i] = log(ev[0]) * r1i[0]^2 + log(ev[1]) * r2i[0]^2;
+        logDh0[1][i] = log(ev[0]) * r1i[0]*r1i[1] + log(ev[1]) * r2i[0]*r2i[1];
+        logDh0[2][i] = log(ev[0]) * r1i[1]^2 + log(ev[1]) * r2i[1]^2;
     }
     // cout << logDh0 << endl;
     return(true);
@@ -165,9 +165,9 @@ func bool expTensorFiled(mesh &Th, real[int][int] &Dh0, real[int][int] &expDh0) 
         EVD(Di, ev, eV, false);
         real[int] r1i = [eV(0,0), eV(1,0)];
         real[int] r2i = [eV(0,1), eV(1,1)];
-        expDh0[0][i] = exp(ev[0]) * r1i[0]^2 + exp(ev[1]) * r1i[1]^2;
-        expDh0[1][i] = exp(ev[0]) * r1i[0]*r2i[0] + exp(ev[1]) * r1i[1]*r2i[1];
-        expDh0[2][i] = exp(ev[0]) * r2i[0]^2 + exp(ev[1]) * r2i[1]^2;
+        expDh0[0][i] = exp(ev[0]) * r1i[0]^2 + exp(ev[1]) * r2i[0]^2;
+        expDh0[1][i] = exp(ev[0]) * r1i[0]*r1i[1] + exp(ev[1]) * r2i[0]*r2i[1];
+        expDh0[2][i] = exp(ev[0]) * r1i[1]^2 + exp(ev[1]) * r2i[1]^2;
     }
     return(true);
 }
@@ -224,4 +224,28 @@ func bool computeGradientMatrix(mesh &Th, real[int] &APatchK, int[int] &patchesS
         }
     }
 
+}
+
+
+func bool decomposeTensorField(mesh &Th,
+                               real[int] &d11, real[int] &d12, real[int] &d22,
+                               real[int] &alpha, real[int] &gamma,
+                               real[int] &r10, real[int] &r11, real[int] &r20, real[int] &r21) {
+    for(int i = 0; i < d11.n; i++) {
+        real[int, int] Di(2,2);
+        Di(0,0) = d11[i];
+        Di(0,1) = d12[i];
+        Di(1,0) = d12[i];
+        Di(1,1) = d22[i];
+        real[int] ev(2);
+        real[int, int] eV(2, 2);
+        EVD(Di, ev, eV, true);
+        r10[i] = eV(0,0);
+        r11[i] = eV(1,0);
+        r20[i] = eV(0,1);
+        r21[i] = eV(1,1);
+        alpha[i] = sqrt(ev[0]*ev[1]);
+        gamma[i] = ev[0]/alpha[i];
+    }
+    return(true);
 }

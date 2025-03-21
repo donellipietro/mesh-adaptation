@@ -18,6 +18,7 @@ int nbvx = 1e6;
 
 include "../data/data_scenario_1.idp"
 // include "../data/data_scenario_2.idp"
+// include "../data/import_tensor.edp"
 
 
 // Problem discretization ----
@@ -99,7 +100,7 @@ while(niter < nitermax && etacounter < 15) {
     } else {
         abovecounter ++;
         if(abovecounter > 10) {
-            TOLint = TOLint*0.5;
+            TOLint = TOLint*0.5; // 0.75
             abovecounter = 0;
         }
         if(etaKmean < etaKmeanmin){
@@ -203,7 +204,7 @@ while(niter < nitermax && etacounter < 15) {
 }
 
 plot(Th, cmm = "Adapted mesh", fill = false, wait = true);
-Vh gammah = gamma;
-plot(Th, gammah, cmm = "Adapted mesh", fill = false, wait = true);
+// Vh gammah = gamma;
+// plot(Th, gammah, cmm = "Adapted mesh", fill = false, wait = true);
 
 cout << "Number of triangles: " << Th.nt << endl;

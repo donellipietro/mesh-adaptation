@@ -1,0 +1,50 @@
+// Build the Delaunay mesh of the convex hull
+mesh ThData = triangulate("data/nodes.txt");
+
+// Plot the created mesh
+plot(ThData, wait = true);
+
+int scenario = 3;
+
+// Fespace
+fespace VhData(ThData, P1);
+VhData logd11, logd12, logd22;
+VhData d11, d12, d22, alpha;
+
+// Reading the 3rd column to define the function fxy
+{
+    ifstream file("data/logD.txt");
+    for(int i = 0; i < VhData.ndof; i++){
+        file >> logd11[][i] >> logd12[][i] >> logd22[][i];
+    }
+}
+
+{
+    ifstream file("data/D.txt");
+    for(int i = 0; i < VhData.ndof; i++){
+        file >> d11[][i] >> d12[][i] >> d22[][i];
+    }
+}
+
+{
+    ifstream file("data/alpha.txt");
+    for(int i = 0; i < VhData.ndof; i++){
+        file >> alpha[][i];
+    }
+}
+
+d11 = d11 * (4*(alpha-1)+1);
+d12 = d12 * (4*(alpha-1)+1);
+d22 = d22 * (4*(alpha-1)+1);
+
+// Plot
+// plot(d11, wait = true, fill = true);
+// plot(d12, wait = true, fill = true);
+// plot(d22, wait = true, fill = true);
+
+// Plot
+// plot(logd11, wait = true, fill = true);
+// plot(logd12, wait = true, fill = true);
+// plot(logd22, wait = true, fill = true);
+
+

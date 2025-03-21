@@ -7,7 +7,7 @@ bool plots = false;
 // Options ----
 
 bool usingpatch = false;
-real TOL = 0.5; // 0.25, 0.5, 1
+real TOL = 1.; // 0.25, 0.5, 1
 int nitermax = 200;
 real hmin;
 real hmax = 1;
@@ -18,9 +18,11 @@ int nbvx = 1e6;
 
 include "../data/data_scenario_1.idp"
 // include "../data/data_scenario_2.idp"
+// include "../data/import_tensor.edp"
 
-if(scenario == 1) hmin = 1e-2; // or 8*1e-3
+if(scenario == 1) hmin = 8*1e-3; // 1e-2; // or 8*1e-3
 if(scenario == 2) hmin = 5*1e-3;
+if(scenario == 3) hmin = 5*1e-3;
 
 
 // Problem discretization ----
@@ -203,7 +205,8 @@ while(niter < nitermax && etacounter < 30) {
 
     // re-meshing
     Th = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], hmin = hmin);
-    if(plots) plot(Th, wait = true);
+    // if(plots) 
+    plot(Th, wait = false);
 
     // Update iterator
     niter ++;
