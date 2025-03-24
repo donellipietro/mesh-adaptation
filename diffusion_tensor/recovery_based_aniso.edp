@@ -7,10 +7,11 @@ bool plots = false;
 // Options ----
 
 bool usingpatch = false;
-real TOL = 1.; // 0.25, 0.5, 1
+real TOL = 0.5;
 int nitermax = 200;
-real hmin;
+real hmin = 1e-3;
 real hmax = 1;
+real ratiomax = 5;
 int nbvx = 1e6;
 
 
@@ -19,10 +20,6 @@ int nbvx = 1e6;
 include "../data/data_scenario_1.idp"
 // include "../data/data_scenario_2.idp"
 // include "../data/import_tensor.edp"
-
-if(scenario == 1) hmin = 8*1e-3; // 1e-2; // or 8*1e-3
-if(scenario == 2) hmin = 5*1e-3;
-if(scenario == 3) hmin = 5*1e-3;
 
 
 // Problem discretization ----
@@ -81,7 +78,7 @@ real TOLint = TOL;
 int abovecounter = 0; 
 
 // Adaptation loop
-while(niter < nitermax && etacounter < 30) {
+while(niter < nitermax && etacounter < 10) {
 
     // Update
     Nh = Th.nt;
@@ -111,7 +108,7 @@ while(niter < nitermax && etacounter < 30) {
     } else {
         abovecounter ++;
         if(abovecounter > 10) {
-            TOLint = TOLint*0.75;
+            TOLint = TOLint*0.9;
             abovecounter = 0;
         }
         if(eta < etamin){
@@ -178,11 +175,14 @@ while(niter < nitermax && etacounter < 30) {
         sqeta2K[][k] = ev[1];
         invsqlambda1K[][k] = (2 * Nh * (Aref*patchesSize[k]) * (sqeta2K[][k]/APatchK[][k])) / (TOLint^2);
         invsqlambda2K[][k] = (2 * Nh * (Aref*patchesSize[k]) * (sqeta1K[][k]/APatchK[][k])) / (TOLint^2);
+        // check aspect ratio
+        real ratio = sqrt(invsqlambda2K[][k] / invsqlambda1K[][k]);
         // Eigenvalues correction
         if(invsqlambda1K[][k] > 1/hmin^2) invsqlambda1K[][k] = 1/hmin^2;
         if(invsqlambda2K[][k] > 1/hmin^2) invsqlambda2K[][k] = 1/hmin^2;
         if(invsqlambda1K[][k] < 1/hmax^2) invsqlambda1K[][k] = 1/hmax^2;
         if(invsqlambda2K[][k] < 1/hmax^2) invsqlambda2K[][k] = 1/hmax^2;
+        if(ratio > ratiomax) invsqlambda1K[][k] = invsqlambda2K[][k] / ratiomax^2;
         // Metric assembly
         MK[0][k] = invsqlambda1K[][k] * r10K[][k]^2 + invsqlambda2K[][k] * r11K[][k]^2;
         MK[1][k] = invsqlambda1K[][k] * r10K[][k]*r20K[][k] + invsqlambda2K[][k] * r11K[][k]*r21K[][k];
@@ -205,7 +205,6 @@ while(niter < nitermax && etacounter < 30) {
 
     // re-meshing
     Th = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], hmin = hmin);
-    // if(plots) 
     plot(Th, wait = false);
 
     // Update iterator

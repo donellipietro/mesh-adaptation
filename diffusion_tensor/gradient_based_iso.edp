@@ -54,7 +54,7 @@ real TOLint = TOL;
 int abovecounter = 0; 
 
 // Adaptation loop
-while(niter < nitermax && etacounter < 15) {
+while(niter < nitermax && etacounter < 10) {
 
     // Update evaluation
     int Nh = Th.nt;

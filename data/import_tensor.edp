@@ -1,8 +1,8 @@
 // Build the Delaunay mesh of the convex hull
-mesh ThData = triangulate("data/nodes.txt");
+mesh ThData = triangulate("data/tensor/nodes.txt");
 
 // Plot the created mesh
-plot(ThData, wait = true);
+// plot(ThData, wait = true);
 
 int scenario = 3;
 
@@ -13,21 +13,21 @@ VhData d11, d12, d22, alpha;
 
 // Reading the 3rd column to define the function fxy
 {
-    ifstream file("data/logD.txt");
+    ifstream file("data/tensor/logD.txt");
     for(int i = 0; i < VhData.ndof; i++){
         file >> logd11[][i] >> logd12[][i] >> logd22[][i];
     }
 }
 
 {
-    ifstream file("data/D.txt");
+    ifstream file("data/tensor/D.txt");
     for(int i = 0; i < VhData.ndof; i++){
         file >> d11[][i] >> d12[][i] >> d22[][i];
     }
 }
 
 {
-    ifstream file("data/alpha.txt");
+    ifstream file("data/tensor/alpha.txt");
     for(int i = 0; i < VhData.ndof; i++){
         file >> alpha[][i];
     }
