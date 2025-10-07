@@ -5,7 +5,7 @@ bool plots = false;
 
 // Options ----
 
-real TOL = 0.15;
+real TOL = 0.3;
 int nitermax = 200;
 real hmin = 1e-3;
 real hmax = 0.05;
@@ -129,3 +129,5 @@ Vh gammah = gamma;
 plot(Th, gammah, cmm = "Final Th", wait=1);
 
 cout << "Number of triangles: " << Th.nt << endl;
+
+savemesh(Th, "mesh/gradient_based_iso_s"+scenario+"_"+TOL+".mesh");

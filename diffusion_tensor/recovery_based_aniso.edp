@@ -7,7 +7,7 @@ bool plots = false;
 // Options ----
 
 bool usingpatch = false;
-real TOL = 0.5;
+real TOL = 0.85; // 0.5
 int nitermax = 200;
 real hmin = 1e-3;
 real hmax = 1;
@@ -17,8 +17,8 @@ int nbvx = 1e6;
 
 // Data ----
 
-include "../data/data_scenario_1.idp"
-// include "../data/data_scenario_2.idp"
+// include "../data/data_scenario_1.idp"
+include "../data/data_scenario_2.idp"
 // include "../data/import_tensor.edp"
 
 
@@ -216,6 +216,7 @@ Vh gammah = gamma;
 plot(Th, gammah, cmm = "Adapted mesh", fill = false, wait = true);
 
 cout << "Number of triangles: " << Th.nt << endl;
+cout << "Number of nodes: " << Th.nv << endl;
 
 mesh ThHR = square(200, 200);
 if(plots) plot(Th, wait = true);
@@ -237,3 +238,5 @@ eta = sqrt(int2d(Th)(
     square(dy(logd11htrue) - dy(logd11hadapt)) + 2*square(dy(logd12htrue) - dy(logd12hadapt)) + square(dy(logd22htrue) - dy(logd22hadapt))
 ));
 cout << "Eta: " << eta << endl;
+
+savemesh(Th, "mesh/recovery_based_aniso_s"+scenario+"_"+TOL+".mesh");

@@ -7,7 +7,7 @@ bool plots = false;
 // Options ----
 
 bool usingpatch = false;
-real TOL = 0.15; // 0.8;
+real TOL = 0.5; // 0.15, 0.8; 0.75
 int nitermax = 200;
 real hmin = 1e-3;
 real hmax = 1;
@@ -17,16 +17,24 @@ int nbvx = 1e6;
 
 // Data ----
 
-include "../data/data_scenario_1.idp"
+// include "../data/data_scenario_1.idp"
 // include "../data/data_scenario_2.idp"
 // include "../data/import_tensor.edp"
+include "../data/import_DTI.edp"
 
 
 // Problem discretization ----
 
 // Mesh
-mesh Th = square(20, 20);
-if(plots) plot(Th, wait = true);
+// mesh Th = square(20, 20);
+// if(plots) plot(Th, wait = true);
+mesh Th = ThData;
+Th = adaptmesh(Th, 10., IsMetric = true);
+plot(ThData, wait = true, cmm = "Original");
+plot(Th, wait = true, cmm = "Starting point");
+
+
+
 
 // Functional spaces
 fespace Vh(Th, P1);
@@ -100,7 +108,7 @@ while(niter < nitermax && etacounter < 10) {
         }
     } else {
         abovecounter ++;
-        if(abovecounter > 10) {
+        if(abovecounter > 3) { // 10
             TOLint = TOLint * 0.9; // 0.75
             abovecounter = 0;
         }
@@ -200,7 +208,7 @@ while(niter < nitermax && etacounter < 10) {
     if(plots) plot(m22N, wait = true, fill = true, value = true, cmm = "m22");
 
     // re-meshing
-    Th = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], hmin = hmin);
+    Th = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], hmin = hmin, nbvx = nbvx);
     plot(Th, wait = false);
 
     // Update iterator
@@ -212,3 +220,6 @@ plot(Th, cmm = "Adapted mesh", fill = false, wait = true);
 // plot(Th, gammah, cmm = "Adapted mesh", fill = false, wait = true);
 
 cout << "Number of triangles: " << Th.nt << endl;
+
+savemesh(Th, "mesh/gradient_based_aniso_s"+scenario+"_"+TOL+".mesh");
+

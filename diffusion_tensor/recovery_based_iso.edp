@@ -5,7 +5,7 @@ bool plots = false;
 
 // Options ----
 
-real TOL = 0.5;
+real TOL = 1; // 0.5
 int nitermax = 200;
 real hmin = 1e-3;
 real hmax = 1;
@@ -57,7 +57,7 @@ real TOLint = TOL;
 int abovecounter = 0; 
 
 // Adaptation loop
-while(niter < nitermax && etacounter < 10) {
+while(niter < nitermax && etacounter < 30) {
 
     // Update evaluation
     logd11hStar = logd11;
@@ -158,3 +158,6 @@ eta = sqrt(int2d(Th)(
     square(dy(logd11htrue) - dy(logd11hadapt)) + 2*square(dy(logd12htrue) - dy(logd12hadapt)) + square(dy(logd22htrue) - dy(logd22hadapt))
 ));
 cout << "Eta: " << eta << endl;
+
+
+savemesh(Th, "mesh/recovery_based_iso_"+TOL+".mesh");

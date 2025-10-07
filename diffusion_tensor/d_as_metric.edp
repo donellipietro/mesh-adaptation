@@ -5,24 +5,29 @@ verbosity = 0;
 bool plots = false;
 
 // Options ----
-real hmax = 7.5*1e-2;
+real hmax = 12*1e0; // 7.5*1e-2
 int nbvx = 1e6;
-real beta = 2.;
+real beta = 4.; // 4
 
 
 // Data ----
 
 // include "../data/data_scenario_0.idp"
 // include "../data/data_scenario_1.idp"
-include "../data/data_scenario_2.idp"
+// include "../data/data_scenario_2.idp"
 // include "data/import_tensor.edp"
+include "data/import_DTI.edp"
 
 
 // Problem discretization ----
 
 // Mesh
-mesh Th = square(100, 100);
-if(plots) plot(Th, wait = true);
+// mesh Th = square(100, 100);
+mesh Th = ThData;
+Th = adaptmesh(Th, 10., IsMetric = true);
+plot(ThData, wait = true, cmm = "Original");
+plot(Th, wait = true, cmm = "Starting point");
+// if(plots) plot(Th, wait = true);
 
 // Functional spaces
 fespace VhP1(Th, P1);
@@ -66,3 +71,6 @@ for(int niter = 0; niter < 100; niter ++) {
 plot(Th, cmm = "Adapted mesh", fill = false, wait = true);
 plot(Th, gammaN, cmm = "Adapted mesh", fill = false, wait = true);
 cout << "Number of triangles: " << Th.nt << endl;
+cout << "Number of nodes: " << Th.nv << endl;
+
+savemesh(Th, "mesh/d_as_metric"+scenario+"_"+hmax+".mesh");
