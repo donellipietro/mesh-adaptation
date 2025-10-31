@@ -73,7 +73,7 @@ func bool decomposeTensorField(
 
 // computes the matrix logarithm
 
-func bool logTensorFiled(mesh &Th, real[int][int] &Dh0, real[int][int] &logDh0) {
+func bool logTensorFiled(real[int][int] &Dh0, real[int][int] &logDh0) {
     for(int i = 0; i < Dh0[0].n; i++) {
         real[int, int] Di(2,2);
         Di(0,0) = Dh0[0][i];
@@ -93,7 +93,7 @@ func bool logTensorFiled(mesh &Th, real[int][int] &Dh0, real[int][int] &logDh0) 
     return(true);
 }
 
-func bool expTensorFiled(mesh &Th, real[int][int] &Dh0, real[int][int] &expDh0) {
+func bool expTensorFiled(real[int][int] &Dh0, real[int][int] &expDh0) {
     for(int i = 0; i < Dh0[0].n; i++) {
         real[int, int] Di(2,2);
         Di(0,0) = Dh0[0][i];
@@ -190,7 +190,7 @@ func bool tensorAveragingNodes(mesh &Th, real[int][int] &Dh0, real[int][int] &Dh
     logDh0[0].resize(Th.nt);
     logDh0[1].resize(Th.nt);
     logDh0[2].resize(Th.nt);
-    logTensorFiled(Th, Dh0, logDh0);
+    logTensorFiled(Dh0, logDh0);
 
     int ndof = Dh0av[0].n;
     real[int][int] logDhav(3);
@@ -201,7 +201,7 @@ func bool tensorAveragingNodes(mesh &Th, real[int][int] &Dh0, real[int][int] &Dh
     logDhav[2].resize(ndof);
     logDhav[2] = averagingNodes(Th, logDh0[2], -1e9, 1e9);
 
-    expTensorFiled(Th, logDhav, Dh0av);
+    expTensorFiled(logDhav, Dh0av);
     return(true);
     
 }

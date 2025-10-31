@@ -1,0 +1,86 @@
+load "lapack"
+include "utils.idp"
+
+// Options ----
+verbosity = 0;
+bool store = false;    // whether to store final computed mesh
+bool plots = false;    // whether to display or not intermediate plots
+real hmax = 1e-1;      // largest element diameter
+int nbvx = 1e6;
+real beta = 4.;
+int maxiter = 100;     // maximum number of iterations
+
+// ------------------------------------------- anisotropic tensor field -- linear
+func alpha = 1.;
+func gamma = (cos(4 * pi * (y - x)) + 2);
+func nux   = 1. / sqrt(2);
+func nuy   = 1. / sqrt(2);
+// tensor components [d11, d12, d22]
+func d11 = alpha * (nux^2 * gamma + nuy^2 / gamma);
+func d12 = alpha * (nux * nuy * (gamma - 1. / gamma));
+func d22 = alpha * (nuy^2 * gamma + nux^2 / gamma);
+
+// build Delaunay mesh of unit square
+mesh Th = square(100, 100);
+if (plots) plot(Th, wait = true, cmm = "Starting point");
+
+// Functional spaces
+fespace VhP1(Th, P1); // piecewise linear elements
+fespace VhP0(Th, P0); // piecewise const  elements
+
+VhP1 alphaN;                 // geometric mean of eigenvalues
+VhP1 gammaN;                 // anisotropy ratio
+VhP1 r10N, r11N, r20N, r21N; // eigenvector matrix
+VhP1 d11N = d11;
+VhP1 d12N = d12;
+VhP1 d22N = d22;
+decomposeTensorField(
+   d11N[], d12N[], d22N[],                            // inputs
+   alphaN[], gammaN[], r10N[], r11N[], r20N[], r21N[] // outputs
+);
+
+if (plots) {
+   plot(gammaN, wait = true, fill = true, value = true);
+   plot(alphaN, wait = true, fill = true, value = true);
+   plot(r10N,   wait = true, fill = true, value = true);
+   plot(r11N,   wait = true, fill = true, value = true);
+   plot(r20N,   wait = true, fill = true, value = true);
+   plot(r21N,   wait = true, fill = true, value = true);
+}
+
+// start adaptation loop
+for(int niter = 0; niter < maxiter; niter ++) {
+
+    // build metric from tensor field as
+    // M = alpha * R^\top * diag(1/(gamma^beta * alpha * hmax^2), gamma^beta / (alpha * hmax^2)) * R
+
+    VhP1 gammabetaN = pow(gammaN, beta);                  // gamma^beta
+    VhP1 sqlaK = alphaN * gammabetaN;                     // alpha * gamma^beta
+    real hmaxtilde = hmax / sqrt(sqlaK[].max);            // hmax / sqrt{alpha * gamma^beta}
+    VhP1 sqlambda1N = hmaxtilde^2 * alphaN * gammabetaN;  // 1./(gamma^beta * alpha * hmax^2)
+    VhP1 sqlambda2N = hmaxtilde^2 * alphaN / gammabetaN;  // gamma^beta / (alpha * hmax^2)
+
+    // compute alpha * R^\top * diag(1/(gamma^beta * alpha * hmax^2), gamma^beta / (alpha * hmax^2)) * R
+    VhP1 m11N = r10N^2 * 1./sqlambda1N + r20N^2 * 1./sqlambda2N;
+    VhP1 m12N = r10N * r11N * 1./sqlambda1N + r20N * r21N * 1./sqlambda2N;
+    VhP1 m22N = r11N^2 * 1./sqlambda1N + r21N^2 * 1./sqlambda2N;
+
+    if (plots) {
+       plot(m11N, wait = true, fill = true, cmm = "m11N");
+       plot(m12N, wait = true, fill = true, cmm = "m12N");
+       plot(m22N, wait = true, fill = true, cmm = "m22N");
+    }
+
+    // BAMG adaptation
+    Th = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], nbvx = nbvx); 
+    if (plots) plot(Th, fill = false, wait = false);
+}
+
+// final diagnostic
+plot(Th, cmm = "Adapted mesh", fill = false, wait = true);
+plot(Th, gammaN, cmm = "Adapted mesh", fill = false, wait = true);
+cout << "Number of triangles: " << Th.nt << endl;
+cout << "Number of nodes: " << Th.nv << endl;
+
+// save computed mesh
+if (store) savemesh(Th, "tensor_metric_"+hmax+".mesh");
