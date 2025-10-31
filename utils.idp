@@ -1,30 +1,118 @@
 load "lapack"
 
-// EVD
-
+// compute the eigen-value decomposition of a 2x2 matrix, using the dgeev lapack routine
+//
+// M: input real matrix
+// ev: output real vector of eigenvalues
+// eV: output real matrix of eigenvectors
+// POS: flag to enforce positive eigenvalues
 func bool EVD(real[int, int] &M, real[int] &ev, real[int, int] &eV, bool POS) {
+    // compute complex eigenvalue decomposition
     complex[int] cev(2);
     complex[int, int] ceV(2, 2);
     dgeev(M, cev, ceV);
-    // real part
+    // extract only the real part
+    // eigenvalues
     ev[0] = real(cev[0]);
     ev[1] = real(cev[1]);
+    // eigenvectors
     eV(0,0) = real(ceV(0,0));
     eV(1,0) = real(ceV(1,0));
     eV(0,1) = real(ceV(0,1));
     eV(1,1) = real(ceV(1,1));
-    // ordering 
+    // sort by eigenvalue magnitude
     if(ev[0] < ev[1]){
         ev[0] = real(cev[1]);
         ev[1] = real(cev[0]);
-        eV(0,0) = real(ceV(0,1));
-        eV(1,0) = real(ceV(1,1));
-        eV(0,1) = -real(ceV(0,0));
-        eV(1,1) = -real(ceV(1,0));
+        eV(0,0) =  real(ceV(0, 1));
+        eV(1,0) =  real(ceV(1, 1));
+        eV(0,1) = -real(ceV(0, 0));
+        eV(1,1) = -real(ceV(1, 0));
     }
-    if(POS && ev[0]<=0) ev[0] = 1e-18;
-    if(POS && ev[1]<=0) ev[1] = 1e-18;
+    
+    // ensure numerical positive definiteness of result by clamping negative eigenvalues to positive zero
+    if(POS && ev[0] <= 0) { ev[0] = 1e-18; }
+    if(POS && ev[1] <= 0) { ev[1] = 1e-18; }
+    return true;
 }
+
+// given a 2x2 tensor fields [d11, d12, d22], computes its eigenvector matrix [r10, r11, r20, r21] and scalar factors
+// alpha = \sqrt{\lambda_0 * \lambda_1}, gamma = \frac{\lambda_0}{alpha}
+//
+// [d11, d12, d22]: input SPD matrix
+// alpha: output geometric mean of eigenvalues 
+// gamma: output anisotropy ratio
+// [r10, r11, r20, r21]: output eigenvector matrix
+func bool decomposeTensorField(
+   real[int] &d11, real[int] &d12, real[int] &d22,
+   real[int] &alpha, real[int] &gamma,
+   real[int] &r10, real[int] &r11, real[int] &r20, real[int] &r21) {
+   int size = d11.n;
+   for(int i = 0; i < size; i++) {
+   	// extract tensor field
+        real[int, int] Di(2,2);
+        Di(0,0) = d11[i];
+        Di(0,1) = d12[i];
+        Di(1,0) = d12[i];
+        Di(1,1) = d22[i];
+	// compute eigen decomposition
+        real[int] ev(2);
+        real[int, int] eV(2, 2);
+        EVD(Di, ev, eV, true);
+	// build eigenvector matrix
+        r10[i] = eV(0,0);
+        r11[i] = eV(1,0);
+        r20[i] = eV(0,1);
+        r21[i] = eV(1,1);
+        alpha[i] = sqrt(ev[0]*ev[1]); // eigenvalues geometric mean
+        gamma[i] = ev[0]/alpha[i];    // anisotropy ratio
+    }
+    return true;
+}
+
+
+// computes the matrix logarithm
+
+func bool logTensorFiled(mesh &Th, real[int][int] &Dh0, real[int][int] &logDh0) {
+    for(int i = 0; i < Dh0[0].n; i++) {
+        real[int, int] Di(2,2);
+        Di(0,0) = Dh0[0][i];
+        Di(0,1) = Dh0[1][i];
+        Di(1,0) = Dh0[1][i];
+        Di(1,1) = Dh0[2][i];
+        real[int] ev(2);
+        real[int, int] eV(2, 2);
+        EVD(Di, ev, eV, true);
+        real[int] r1i = [eV(0,0), eV(1,0)];
+        real[int] r2i = [eV(0,1), eV(1,1)];
+        logDh0[0][i] = log(ev[0]) * r1i[0]^2 + log(ev[1]) * r2i[0]^2;
+        logDh0[1][i] = log(ev[0]) * r1i[0]*r1i[1] + log(ev[1]) * r2i[0]*r2i[1];
+        logDh0[2][i] = log(ev[0]) * r1i[1]^2 + log(ev[1]) * r2i[1]^2;
+    }
+    // cout << logDh0 << endl;
+    return(true);
+}
+
+func bool expTensorFiled(mesh &Th, real[int][int] &Dh0, real[int][int] &expDh0) {
+    for(int i = 0; i < Dh0[0].n; i++) {
+        real[int, int] Di(2,2);
+        Di(0,0) = Dh0[0][i];
+        Di(0,1) = Dh0[1][i];
+        Di(1,0) = Dh0[1][i];
+        Di(1,1) = Dh0[2][i];
+        real[int] ev(2);
+        real[int, int] eV(2, 2);
+        EVD(Di, ev, eV, false);
+        real[int] r1i = [eV(0,0), eV(1,0)];
+        real[int] r2i = [eV(0,1), eV(1,1)];
+        expDh0[0][i] = exp(ev[0]) * r1i[0]^2 + exp(ev[1]) * r2i[0]^2;
+        expDh0[1][i] = exp(ev[0]) * r1i[0]*r1i[1] + exp(ev[1]) * r2i[0]*r2i[1];
+        expDh0[2][i] = exp(ev[0]) * r1i[1]^2 + exp(ev[1]) * r2i[1]^2;
+    }
+    return(true);
+}
+
+
 
 // Averaging
 
@@ -67,22 +155,6 @@ func real[int] averagingNodes(mesh &Th, real[int] &vh0, real vmin, real vmax) {
     return(vh1[]);
 }
 
-/*
-mesh Th = square(20, 20);
-fespace VhP1(Th, P1);
-fespace VhP0(Th, P0);
-VhP1 uh1;
-VhP0 uh0;
-
-uh0[][50] = 1.;
-
-uh1[] = averagingNodes(Th, uh0[], 0, 3);
-
-plot(uh0, fill = true, wait = true);
-plot(uh1, fill = true, wait = true);
-*/
-
-
 // Patch
 
 func int[int] getPatch(mesh &Th, int k) {
@@ -111,66 +183,6 @@ func int[int] getPatch(mesh &Th, int k) {
     return patch;
 }
 
-/*
-mesh Th = square(20, 20);
-fespace Vh(Th, P0);
-Vh uh;
-
-int k = 200;
-int[int] patch = getPatch(Th, k);
-
-for(int i = 0; i < patch.n; i++) {
-    uh[][patch[i]] = 0.5;
-}
-uh[][k] = 1;
-
-cout << patch << endl;
-
-plot(Th, wait = 1, fill = 0);
-plot(Th, uh, wait = 1, fill = 1);
-plot(Th, wait = 1, fill = 0);
-*/
-
-// LogEuclidean metric utils
-
-func bool logTensorFiled(mesh &Th, real[int][int] &Dh0, real[int][int] &logDh0) {
-    for(int i = 0; i < Dh0[0].n; i++) {
-        real[int, int] Di(2,2);
-        Di(0,0) = Dh0[0][i];
-        Di(0,1) = Dh0[1][i];
-        Di(1,0) = Dh0[1][i];
-        Di(1,1) = Dh0[2][i];
-        real[int] ev(2);
-        real[int, int] eV(2, 2);
-        EVD(Di, ev, eV, true);
-        real[int] r1i = [eV(0,0), eV(1,0)];
-        real[int] r2i = [eV(0,1), eV(1,1)];
-        logDh0[0][i] = log(ev[0]) * r1i[0]^2 + log(ev[1]) * r2i[0]^2;
-        logDh0[1][i] = log(ev[0]) * r1i[0]*r1i[1] + log(ev[1]) * r2i[0]*r2i[1];
-        logDh0[2][i] = log(ev[0]) * r1i[1]^2 + log(ev[1]) * r2i[1]^2;
-    }
-    // cout << logDh0 << endl;
-    return(true);
-}
-
-func bool expTensorFiled(mesh &Th, real[int][int] &Dh0, real[int][int] &expDh0) {
-    for(int i = 0; i < Dh0[0].n; i++) {
-        real[int, int] Di(2,2);
-        Di(0,0) = Dh0[0][i];
-        Di(0,1) = Dh0[1][i];
-        Di(1,0) = Dh0[1][i];
-        Di(1,1) = Dh0[2][i];
-        real[int] ev(2);
-        real[int, int] eV(2, 2);
-        EVD(Di, ev, eV, false);
-        real[int] r1i = [eV(0,0), eV(1,0)];
-        real[int] r2i = [eV(0,1), eV(1,1)];
-        expDh0[0][i] = exp(ev[0]) * r1i[0]^2 + exp(ev[1]) * r2i[0]^2;
-        expDh0[1][i] = exp(ev[0]) * r1i[0]*r1i[1] + exp(ev[1]) * r2i[0]*r2i[1];
-        expDh0[2][i] = exp(ev[0]) * r1i[1]^2 + exp(ev[1]) * r2i[1]^2;
-    }
-    return(true);
-}
 
 func bool tensorAveragingNodes(mesh &Th, real[int][int] &Dh0, real[int][int] &Dh0av) {
 
@@ -224,30 +236,6 @@ func bool computeGradientMatrix(mesh &Th, real[int] &APatchK, int[int] &patchesS
         }
     }
 
-}
-
-
-func bool decomposeTensorField(mesh &Th,
-                               real[int] &d11, real[int] &d12, real[int] &d22,
-                               real[int] &alpha, real[int] &gamma,
-                               real[int] &r10, real[int] &r11, real[int] &r20, real[int] &r21) {
-    for(int i = 0; i < d11.n; i++) {
-        real[int, int] Di(2,2);
-        Di(0,0) = d11[i];
-        Di(0,1) = d12[i];
-        Di(1,0) = d12[i];
-        Di(1,1) = d22[i];
-        real[int] ev(2);
-        real[int, int] eV(2, 2);
-        EVD(Di, ev, eV, true);
-        r10[i] = eV(0,0);
-        r11[i] = eV(1,0);
-        r20[i] = eV(0,1);
-        r21[i] = eV(1,1);
-        alpha[i] = sqrt(ev[0]*ev[1]);
-        gamma[i] = ev[0]/alpha[i];
-    }
-    return(true);
 }
 
 
