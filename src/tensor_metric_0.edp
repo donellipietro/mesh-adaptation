@@ -1,5 +1,5 @@
 load "lapack"
-include "utils.idp"
+include "utils.edp"
 
 // Options ----
 verbosity = 0;

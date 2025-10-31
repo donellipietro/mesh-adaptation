@@ -1,5 +1,5 @@
 load "lapack"
-include "utils.idp"
+include "utils.edp"
 
 // Options ----
 verbosity = 0;
@@ -12,7 +12,7 @@ int maxiter = 100;     // maximum number of iterations
 
 // ------------------------------------------- anisotropic tensor field -- load from file
 // build Delaunay mesh of convex hull
-mesh Th = triangulate("data/tensor/nodes.txt");
+mesh Th = triangulate("data/nodes.txt");
 if (plots) plot(Th, wait = true, cmm = "Starting point");
 
 // Functional spaces
@@ -22,7 +22,7 @@ fespace VhP0(Th, P0); // piecewise const  elements
 // load alpha factor
 VhP1 alpha;
 {
-    ifstream file("data/tensor/alpha.txt");
+    ifstream file("data/alpha.txt");
     for(int i = 0; i < VhP1.ndof; i++){
         file >> alpha[][i];
     }
@@ -30,7 +30,7 @@ VhP1 alpha;
 // load tensor field [d11, d12, d22] evaluated at data/tensor/nodes.txt
 VhP1 d11, d12, d22;
 {
-    ifstream file("data/tensor/D.txt");
+    ifstream file("data/D.txt");
     for(int i = 0; i < VhP1.ndof; i++){
         file >> d11[][i] >> d12[][i] >> d22[][i];
     }
