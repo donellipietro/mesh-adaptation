@@ -40,7 +40,7 @@ func bool EVD(real[int, int] &M, real[int] &ev, real[int, int] &eV, bool POS) {
 // alpha = \sqrt{\lambda_0 * \lambda_1}, gamma = \frac{\lambda_0}{alpha}
 //
 // [d11, d12, d22]: input SPD matrix
-// alpha: output geometric mean of eigenvalues 
+// alpha: output eigenvalues geometric mean
 // gamma: output anisotropy ratio
 // [r10, r11, r20, r21]: output eigenvector matrix
 func bool decomposeTensorField(
@@ -49,17 +49,17 @@ func bool decomposeTensorField(
    real[int] &r10, real[int] &r11, real[int] &r20, real[int] &r21) {
    int size = d11.n;
    for(int i = 0; i < size; i++) {
-   	// extract tensor field
+        // extract tensor field
         real[int, int] Di(2,2);
         Di(0,0) = d11[i];
         Di(0,1) = d12[i];
         Di(1,0) = d12[i];
         Di(1,1) = d22[i];
-	// compute eigen decomposition
+        // compute eigen decomposition
         real[int] ev(2);
         real[int, int] eV(2, 2);
         EVD(Di, ev, eV, true);
-	// build eigenvector matrix
+        // build eigenvector matrix
         r10[i] = eV(0,0);
         r11[i] = eV(1,0);
         r20[i] = eV(0,1);
@@ -69,6 +69,105 @@ func bool decomposeTensorField(
     }
     return true;
 }
+
+
+// compute an area-weighted nodal average of an elementwise (P0) scalar field.
+//
+// Th: input mesh
+// vh0: elementwise scalar field (P0 values, one per triangle)
+// vmin: minimum allowed value for the averaged nodal field
+// vmax: maximum allowed value for the averaged nodal field
+func real[int] averagingNodes(mesh &Th, real[int] &vh0, real vmin, real vmax) {
+    fespace VhP1(Th, P1);
+    fespace VhP0(Th, P0);
+    VhP1 vh1;
+    VhP0 AK = area;
+
+    real[int] areaSumNode(VhP1.ndof), vhSumNode(VhP1.ndof);
+    areaSumNode = 0; vhSumNode = 0;
+    
+    for(int k = 0; k < Th.nt; ++k) {
+        real aK = AK[][k];
+        for(int i=0; i<3; i++) {
+            int index = Th[k][i];
+            areaSumNode[index] += aK;
+            vhSumNode[index] += aK * vh0[k];
+        }
+    }
+    
+    for(int n = 0; n < Th.nv; ++n) {
+        if(areaSumNode[n] > 1e-30){
+            vh1[][n] = vhSumNode[n] / areaSumNode[n];
+        } else{
+            vh1[][n] = vmin;
+        }
+
+        vh1[][n] = min(vmax, max(vmin, vh1[][n]));
+    }
+    return(vh1[]);
+}
+
+
+
+
+// Precompute vertex-to-element connectivity once
+func int[int,int] buildVertexToElem(mesh &Th) {
+    // First pass: count how many elements per vertex
+    int[int] count(Th.nv);
+    for (int k = 0; k < Th.nt; k++) {
+        for (int i = 0; i < 3; i++) {
+            count[Th[k][i]]++;
+	}
+    }
+
+    // build a matrix representation of patch connectivity. As not all vertices have the same patch cardinality, let
+    // first entry of the matrix be the number of elements in the patch
+    int maxNeigh = count.max; 
+    int[int,int] vertexToElem(Th.nv, maxNeigh + 1);
+    for (int v = 0; v < Th.nv; v++) {
+        vertexToElem(v,0) = 0;
+    }
+
+    for (int k = 0; k < Th.nt; k++) {
+        for (int i = 0; i < 3; i++) {
+            int v = Th[k][i];
+	    // increase patch counter for this vertex
+	    vertexToElem(v, 0)++;
+	    // store element k in patch of node v
+            vertexToElem(v, vertexToElem(v, 0)) = k;
+        }
+    }
+    return vertexToElem;
+}
+
+
+func int[int] getPatch(mesh &Th, int k, int[int,int] &vertexToElem) {
+    // Collect all unique triangles that share a vertex with triangle k
+    int[int] mark(Th.nt); // boolean-like marker
+    for (int i = 0; i < 3; i++) {
+        int vi = Th[k][i];
+        for (int j = 0; j < vertexToElem(vi,0); j++) {
+            int elem = vertexToElem(vi, j+1);
+            mark[elem] = true;
+        }
+    }
+
+    // Build patch
+    int[int] patch(0);
+    for (int j = 0; j < Th.nt; j++) {
+        if (mark[j]) {
+            patch.resize(patch.n + 1);
+            patch[patch.n - 1] = j;
+        }
+    }
+    return patch;
+}
+
+
+
+
+
+
 
 
 // computes the matrix logarithm
@@ -114,74 +213,6 @@ func bool expTensorFiled(real[int][int] &Dh0, real[int][int] &expDh0) {
 
 
 
-// Averaging
-
-func real[int] averagingNodes(mesh &Th, real[int] &vh0, real vmin, real vmax) {
-    fespace VhP1(Th, P1);
-    fespace VhP0(Th, P0);
-    VhP1 vh1;
-    VhP0 AK;
-
-    AK = area;
-    real[int] areaSumNode(VhP1.ndof), vhSumNode(VhP1.ndof);
-    areaSumNode = 0;
-    vhSumNode = 0;
-    for(int k=0; k<Th.nt; k++)
-    {
-        for(int i=0; i<3; i++)
-        {
-            int index = Th[k][i];
-            areaSumNode[index] += AK[][k];
-            vhSumNode[index] += AK[][k] * vh0[k];
-        }
-    }
-    for(int n=0; n<VhP1.ndof; n++)
-    {
-        if(areaSumNode[n] > 1e-30){
-            vh1[][n] = vhSumNode[n] / areaSumNode[n];
-        } else{
-            cout << "Error, element with null area!" << endl;
-            break;
-        }
-
-        if(vh1[][n] < vmin){
-            vh1[][n] = vmin;
-        }
-        if(vh1[][n] > vmax){
-            vh1[][n] = vmax;
-        }
-    }
-
-    return(vh1[]);
-}
-
-// Patch
-
-func int[int] getPatch(mesh &Th, int k) {
-    
-    int[int] Chi(Th.nt);
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < Th.nt; j++) {
-            if(!Chi[j]) {
-                if ( (Th[j][0] == Th[k][i]) || (Th[j][1] == Th[k][i]) || (Th[j][2] == Th[k][i]) ) {
-                    // patch.resize(patch.n + 1);
-                    // patch[patch.n - 1] = Th[j];
-                    Chi[j] = true;
-                }
-            }
-        }
-    }
-    
-    int[int] patch(0);
-    for (int j = 0; j < Th.nt; j++) {
-        if(Chi[j]){
-            patch.resize(patch.n + 1);
-            patch[patch.n - 1] = j;
-        }
-    }
-
-    return patch;
-}
 
 
 func bool tensorAveragingNodes(mesh &Th, real[int][int] &Dh0, real[int][int] &Dh0av) {
@@ -208,35 +239,35 @@ func bool tensorAveragingNodes(mesh &Th, real[int][int] &Dh0, real[int][int] &Dh
 
 // Aniso
 
-func bool computeGradientMatrix(mesh &Th, real[int] &APatchK, int[int] &patchesSize, bool usingpatch,
-                                real[int] &g11K, real[int] &g12K, real[int] &g22K,
-                                real[int] &G11K, real[int] &G12K, real[int] &G22K) {
+// func bool computeGradientMatrix(mesh &Th, real[int] &APatchK, int[int] &patchesSize, bool usingpatch,
+//                                 real[int] &g11K, real[int] &g12K, real[int] &g22K,
+//                                 real[int] &G11K, real[int] &G12K, real[int] &G22K) {
     
-    fespace VhP0(Th, P0);
+//     fespace VhP0(Th, P0);
 
-    // compute
-    VhP0 AK = area;
-    for(int k = 0; k < Th.nt; k++) {
-        int[int] patch;
-        if(usingpatch) {
-            int[int] patchTemp = getPatch(Th, k);
-            patch.resize(patchTemp.n);
-            patch = patchTemp;
-        } else {
-            patch.resize(1);
-            patch = [k];
-        }
-        patchesSize[k] = patch.n;
-        for(int i = 0; i < patch.n; i++){
-            int index = patch[i];
-            APatchK[k] += AK[][index];
-            G11K[k] += g11K[index];
-            G12K[k] += g12K[index];
-            G22K[k] += g22K[index];  
-        }
-    }
+//     // compute
+//     VhP0 AK = area;
+//     for(int k = 0; k < Th.nt; k++) {
+//         int[int] patch;
+//         if(usingpatch) {
+//             int[int] patchTemp = getPatch(Th, k);
+//             patch.resize(patchTemp.n);
+//             patch = patchTemp;
+//         } else {
+//             patch.resize(1);
+//             patch = [k];
+//         }
+//         patchesSize[k] = patch.n;
+//         for(int i = 0; i < patch.n; i++){
+//             int index = patch[i];
+//             APatchK[k] += AK[][index];
+//             G11K[k] += g11K[index];
+//             G12K[k] += g12K[index];
+//             G22K[k] += g22K[index];  
+//         }
+//     }
 
-}
+// }
 
 
 func real computeEccentricity(mesh &Th, int k) {

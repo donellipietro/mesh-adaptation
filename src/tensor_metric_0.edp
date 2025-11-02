@@ -117,4 +117,4 @@ cout << "Number of triangles: " << Th.nt << endl;
 cout << "Number of nodes: " << Th.nv << endl;
 
 // save computed mesh
-if (store) savemesh(Th, "tensor_metric_"+hmax+".mesh");
+if (store) { savemesh(Th, "tensor_metric_"+hmax+".mesh"); }

@@ -1,0 +1,111 @@
+include "utils.edp"
+
+// Options ----
+verbosity = 0;
+bool store = false;    // whether to store final computed mesh
+bool plots = false;    // whether to display intermediate plots
+real hmax = 1e-1;
+real hmin = 1e-2;
+int nbvx = 1e6;
+real TOL = 1;
+int maxiter = 200;     // maximum number of iterations
+
+// ------------------------------------------- anisotropic tensor field -- linear
+func alpha = 1.;
+func gamma = (cos(4 * pi * (y - x)) + 2);
+func nux   = 1. / sqrt(2);
+func nuy   = 1. / sqrt(2);
+// tensor components [d11, d12, d22]
+func d11 = alpha * (nux^2 * gamma + nuy^2 / gamma);
+func d12 = alpha * (nux * nuy * (gamma - 1. / gamma));
+func d22 = alpha * (nuy^2 * gamma + nux^2 / gamma);
+
+// log transformed diffusion tensor components [logd11, logd12, logd22]
+func logd11 = nux * nux * log(alpha * gamma) + nuy * nuy * log(alpha / gamma);
+func logd12 = nux * nuy * log(alpha * gamma) - nux * nuy * log(alpha / gamma);
+func logd22 = nuy * nuy * log(alpha * gamma) + nux * nux * log(alpha / gamma);
+
+// build mesh
+mesh Th = square(20, 20);
+if(plots) plot(Th, wait = true);
+
+// Functional spaces
+fespace VhP2(Th, P2);
+fespace VhP0(Th, P0);
+fespace VhP1(Th, P1);
+
+// discretized diffusion tensor components
+VhP2 logd11R, logd12R, logd22R; // recovered tensor gradient
+VhP1 logd11h, logd12h, logd22h; // discrete gradient
+
+// approximation of H^1-seminorm of discretization error: \int_D \| R(\nabla u_h) - \nabla u_h \|_2^2, with R the recovery gradient
+varf vsqetaK(unused, chiK) = 
+    int2d(Th)(
+        chiK*(
+            square(dx(logd11R) - dx(logd11h)) + 2*square(dx(logd12R) - dx(logd12h)) + square(dx(logd22R) - dx(logd22h)) +
+            square(dy(logd11R) - dy(logd11h)) + 2*square(dy(logd12R) - dy(logd12h)) + square(dy(logd22R) - dy(logd22h))
+        )
+    );
+
+// start adaptation loop
+int niter = 0;              // current iteration number
+real eta = 1e9;             // current global anisotropic error estimator
+real etaold = 1e9;          // error estimator at previous iteration
+real relChange = 1.0;       // relative change in error
+
+// stop if solution stabilizes relative error or maximum number of iteration reached
+while(niter < maxiter && relChange > 1e-3) { 
+    int n = Th.nt;
+
+    // update projected solutions
+    // recovered gradient on P2 elements
+    logd11R = logd11;
+    logd12R = logd12;
+    logd22R = logd22;
+    // solution gradient on P1 elements
+    logd11h = logd11;
+    logd12h = logd12;
+    logd22h = logd22;
+
+    // compute per-element isotropic error estimator \eta_K = \int_K \| (R(\nabla u_h) - \nabla u_h)|_K \|_2^2
+    VhP0 sqetaK;
+    sqetaK[] = vsqetaK(0, VhP0);
+    if(plots) { plot(sqetaK, cmm = "sqetaK " + niter,  wait=true, fill=true, value=true); }
+    // update anisotropic error estimator \sum_{i=1}^n \eta_K
+    eta = sqrt(sqetaK[].sum);
+    // relative difference in error
+    relChange = abs(eta - etaold) / etaold;
+    
+    // output diagnostics
+    if (plots) {
+       cout << "iteration:                  " << niter << endl;
+       cout << "mesh size:                  " << n << endl;
+       cout << "eta:                        " << eta << endl;
+       cout << "eta_old:                    " << etaold << endl;
+       cout << "abs(eta - eta_old)/eta_old: " << relChange << endl;
+       cout << endl;
+    }
+
+    etaold = eta;
+
+    // build error estimator field (to be used as scalar metric in adaptation)
+    VhP0 A = area;
+    VhP0 Aref = A[].sum;
+    VhP0 hKnew = pow((TOL * TOL) / (n * Aref * (sqetaK / A)), 0.5);
+    VhP1 hNnew;
+    hNnew[] = averagingNodes(Th, hKnew[], hmin, hmax);
+    
+    // BAMG adapation
+    Th = adaptmesh(Th, hNnew, IsMetric = true, nbvx = nbvx);
+    if(plots) { plot(Th, cmm = "Th " + niter, wait = true); }
+
+    niter++;
+}
+
+// final diagnostic
+plot(Th, cmm = "Final Th", wait = true);
+cout << "Number of triangles: " << Th.nt << endl;
+cout << "Number of nodes: " << Th.nv << endl;
+
+// save computed mesh
+if (store) { savemesh(Th, "recovery_0.mesh"); }
