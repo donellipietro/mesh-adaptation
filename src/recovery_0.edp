@@ -48,14 +48,15 @@ varf vsqetaK(unused, chiK) =
     );
 
 // start adaptation loop
-int niter = 0;              // current iteration number
-real eta = 1e9;             // current global anisotropic error estimator
-real etaold = 1e9;          // error estimator at previous iteration
-real relChange = 1.0;       // relative change in error
+real eta = 1e9;         // current global anisotropic error estimator
+real TOL2 = TOL;        // Adaptive internal tolerance
+real etamin = 1e9;      // Smallest eta observed
+int stagnation = 0;     // Counter for consecutive improvements below TOL
+int niter = 0;          // Iteration counter
+mesh ThOpt = Th;        // optimal adapted mesh
 
 // stop if solution stabilizes relative error or maximum number of iteration reached
-real[int] hKvec;
-while(niter < maxiter && relChange > 2e-2) { 
+while(niter < maxiter && stagnation < 10) { 
     int n = Th.nt;
 
     // update projected solutions
@@ -74,28 +75,32 @@ while(niter < maxiter && relChange > 2e-2) {
     if(plots) { plot(sqetaK, cmm = "sqetaK " + niter,  wait=true, fill=true, value=true); }
     // update anisotropic error estimator \sum_{i=1}^n \eta_K
     eta = sqrt(sqetaK[].sum);
-    // relative difference in error
-    relChange = abs(eta - etaold) / etaold;
+    // adaptive stopping criterion
+    if(eta < TOL){
+        // eta below target tolerance
+        if(eta < etamin){ // eta still decreasing
+            etamin = eta;
+            stagnation = 0; // reset stagnation counter
+	    ThOpt = Th;
+        } else {
+            stagnation++;
+        }
+    }
     
     // output diagnostics
-    cout << "iteration:                  " << niter << endl;
-    cout << "mesh size:                  " << n << endl;
-    cout << "eta:                        " << eta << endl;
-    cout << "eta_old:                    " << etaold << endl;
-    cout << "abs(eta - eta_old)/eta_old: " << relChange << endl;
+    cout << "iteration:    " << niter << endl;
+    cout << "mesh size:    " << n << endl;
+    cout << "eta:          " << eta << endl;
+    cout << "stagnation:   " << stagnation << endl;
     cout << endl;
-
-    etaold = eta;
 
     // build error estimator field (to be used as scalar metric in adaptation)
     VhP0 A = area;
     VhP0 Aref = A[].sum;
-    VhP0 hKnew = pow((TOL * TOL) / (n * Aref * (sqetaK / A)), 0.5);
+    VhP0 hKnew = pow((TOL2 * TOL2) / (n * Aref * (sqetaK / A)), 0.5);
     VhP1 hNnew;
     hNnew[] = averagingNodes(Th, hKnew[], hmin, hmax);
-    hKvec.resize(VhP1.ndof);
-    hKvec = hNnew[];
-
+    
     // BAMG adapation
     Th = adaptmesh(Th, hNnew, IsMetric = true, nbvx = nbvx);
     if(plots) { plot(Th, cmm = "Th " + niter, wait = true); }
@@ -104,11 +109,11 @@ while(niter < maxiter && relChange > 2e-2) {
 }
 
 // final diagnostic
-plot(Th, cmm = "Final Th", wait = true);
+plot(ThOpt, cmm = "Adapted mesh", fill = false, wait = true);
 VhP1 gammah = gamma;
-plot(Th, gammah, cmm = "Adapted mesh", fill = false, wait = true);
-cout << "Number of triangles: " << Th.nt << endl;
-cout << "Number of nodes: " << Th.nv << endl;
+plot(ThOpt, gammah, cmm = "Adapted mesh", fill = false, wait = true);
+cout << "Number of triangles: " << ThOpt.nt << endl;
+cout << "Number of nodes: " << ThOpt.nv << endl;
 
 // save computed mesh
-if (store) { savemesh(Th, "recovery_0.mesh"); }
+if (store) { savemesh(ThOpt, "recovery_0.mesh"); }
