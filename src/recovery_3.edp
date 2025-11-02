@@ -1,0 +1,228 @@
+include "utils.edp"
+
+// Options ----
+verbosity = 0;
+bool store = false;    // whether to store final computed mesh
+bool plots = false;    // whether to display intermediate plots
+real hmax = 3e-2;
+real hmin = 1e-3;
+real ratiomax = 5.0;
+int nbvx = 1e6;
+real TOL = 0.5;
+int maxiter = 200;     // maximum number of iterations
+real trf = 0.9;        // tolerance reduction factor
+
+// ------------------------------------------- anisotropic tensor field -- quadratic
+func alpha = 1.;
+func gamma = (cos(4 * pi * (y - x)) + 2);
+func nux   = 1. / sqrt(2);
+func nuy   = 1. / sqrt(2);
+// tensor components [d11, d12, d22]
+func d11 = alpha * (nux^2 * gamma + nuy^2 / gamma);
+func d12 = alpha * (nux * nuy * (gamma - 1. / gamma));
+func d22 = alpha * (nuy^2 * gamma + nux^2 / gamma);
+
+// log transformed diffusion tensor components [logd11, logd12, logd22]
+func logd11 = nux * nux * log(alpha * gamma) + nuy * nuy * log(alpha / gamma);
+func logd12 = nux * nuy * log(alpha * gamma) - nux * nuy * log(alpha / gamma);
+func logd22 = nuy * nuy * log(alpha * gamma) + nux * nux * log(alpha / gamma);
+
+// Mesh
+mesh Th = square(20, 20);
+if(plots) { plot(Th, wait = true); }
+
+// Functional spaces
+fespace VhP2(Th, P2);
+fespace VhP0(Th, P0);
+fespace VhP1(Th, P1);
+
+// discretized diffusion tensor components
+VhP2 logd11R, logd12R, logd22R; // recovered tensor gradient
+VhP1 logd11h, logd12h, logd22h; // discrete gradient
+
+// components used to assemble matrix G =
+//   \sum_{t \in patch(k)}
+//      [\int_t \partial_x L_h\^top * \partial_x L_h, \int_t \partial_x L_h\^top * \partial_y L_h
+//       \int_t \partial_x L_h\^top * \partial_y L_h, \int_t \partial_y L_h\^top * \partial_y L_h]
+// with L = logdR - logdh, being logdR the recovered part and logdh the approximate solution
+
+// \int_t \partial_x L_h\^top * \partial_x L_h
+varf vg11K(unused, chiK)
+     = int2d(Th)(
+	   chiK * (
+	       square(dx(logd11R) - dx(logd11h)) +  2*square(dx(logd12R) - dx(logd12h)) + square(dx(logd22R) - dx(logd22h))
+	   )
+);
+// \int_t \partial_x L_h\^top * \partial_y L_h
+varf vg12K(unused, chiK)
+     = int2d(Th)(
+           chiK * (
+	       (dx(logd11R) - dx(logd11h)) * (dy(logd11R) - dy(logd11h)) +
+	   2 * (dx(logd12R) - dx(logd12h)) * (dy(logd12R) - dy(logd12h)) +
+               (dx(logd22R) - dx(logd22h)) * (dy(logd22R) - dy(logd22h))
+	   )
+);
+// \int_t \partial_y L_h\^top * \partial_y L_h
+varf vg22K(unused, chiK)
+     = int2d(Th)(
+           chiK * (
+	       square(dy(logd11R) - dy(logd11h)) + 2 * square(dy(logd12R) - dy(logd12h)) + square(dy(logd22R) - dy(logd22h))
+	   )
+);
+
+// approximation of H^1-seminorm of discretization error: \int_D \| R(\nabla u_h) - \nabla u_h \|_2^2, with R the recovery gradient
+varf vsqetaK(unused, chiK) = 
+    int2d(Th)(
+        chiK*(
+            square(dx(logd11R) - dx(logd11h)) + 2*square(dx(logd12R) - dx(logd12h)) + square(dx(logd22R) - dx(logd22h)) +
+            square(dy(logd11R) - dy(logd11h)) + 2*square(dy(logd12R) - dy(logd12h)) + square(dy(logd22R) - dy(logd22h))
+        )
+    );
+
+// start adaptation loop
+real eta = 1e9;         // current global anisotropic error estimator
+real TOL2 = TOL;        // Adaptive internal tolerance
+real etamin = 1e9;      // Smallest eta observed
+int stagnation = 0;     // Counter for consecutive improvements below TOL
+int niter = 0;          // Iteration counter
+int cnt = 0;            
+
+// stop if solution stabilizes relative error or maximum number of iteration reached
+while(niter < maxiter && stagnation < 10) { 
+    int n = Th.nt;
+    VhP0 Ak = area;
+    real Aref = Ak[].sum;
+
+    // update projected solutions
+    // recovered gradient on P2 elements
+    logd11R = logd11;
+    logd12R = logd12;
+    logd22R = logd22;
+    // solution gradient on P1 elements
+    logd11h = logd11;
+    logd12h = logd12;
+    logd22h = logd22;
+
+    // compute per-element isotropic error estimator \eta_K = \int_K \| (R(\nabla u_h) - \nabla u_h)|_K \|_2^2
+    VhP0 sqetaK;
+    sqetaK[] = vsqetaK(0, VhP0);
+    if(plots) plot(sqetaK, cmm = "sqetaK " + niter,  wait=true, fill=true, value=true);
+    // update anisotropic error estimator \sum_{i=1}^n \eta_K
+    eta = sqrt(sqetaK[].sum);
+    // adaptive stopping criterion
+    if(eta < TOL){
+        // eta below target tolerance
+        if(eta < etamin){ // eta still decreasing
+            etamin = eta;
+            stagnation = 0; // reset stagnation counter
+        } else {
+            stagnation++;
+        }
+    } else {
+        cnt++;
+	if (cnt >= 5) {
+            TOL2 = TOL2 * trf;
+	    cnt = 0;
+	}
+    }
+
+    // output diagnostics
+    cout << "iteration:    " << niter << endl;
+    cout << "mesh size:    " << n << endl;
+    cout << "eta:          " << eta << endl;
+    cout << "stagnation:   " << stagnation << endl;
+    cout << endl;
+
+    // assemble matrix G
+    VhP0 G11K, G12K, G22K;
+    G11K[] = vg11K(0, VhP0);
+    G12K[] = vg12K(0, VhP0);
+    G22K[] = vg22K(0, VhP0);
+    if(plots) {
+        plot(G11K, cmm = "G11K " + niter,  wait=true, fill=true, value=true);
+        plot(G12K, cmm = "G12K " + niter,  wait=true, fill=true, value=true);
+        plot(G22K, cmm = "G22K " + niter,  wait=true, fill=true, value=true);
+    }
+    
+    VhP0 sqeta1K, sqeta2K, invsqlambda1K, invsqlambda2K;
+    VhP0 r10K, r11K, r20K, r21K;
+    
+    real[int][int] MK(3);
+    MK[0].resize(Th.nt);
+    MK[1].resize(Th.nt);
+    MK[2].resize(Th.nt);
+	
+    for(int k = 0; k < Th.nt; k++){
+        // local anisotropy matrix of the gradient error on element k
+        real[int, int] GK(2,2);
+        GK(0,0) = G11K[][k];
+        GK(0,1) = G12K[][k];
+        GK(1,0) = G12K[][k];
+        GK(1,1) = G22K[][k];
+
+	// G_k spectral decomposition
+	// G_k = R_k^\top * diag(ev[1], ev[2]) * R_k
+        real[int] ev(2);
+        real[int, int] eV(2, 2);
+        EVD(GK, ev, eV, true);
+        r10K[][k] = eV(0,1);
+        r11K[][k] = eV(1,1);
+        r20K[][k] = eV(0,0);
+        r21K[][k] = eV(1,0);
+
+	// build local metric tensor
+	// M_k = R_k * diag(invsqlambda1K, invsqlambda2K) * R_k^\top
+
+        sqeta1K[][k] = ev[0];
+        sqeta2K[][k] = ev[1];
+	// the more anistropic the local error, the more stretched the metric tensor becomes along R_k's eigenvectors
+        invsqlambda1K[][k] = (2 * n * Aref * (sqeta2K[][k] / Ak[][k])) / (TOL2 * TOL2);
+        invsqlambda2K[][k] = (2 * n * Aref * (sqeta1K[][k] / Ak[][k])) / (TOL2 * TOL2);
+		
+        // clamp eigenvalues
+        if(invsqlambda1K[][k] > 1/(hmin * hmin)) { invsqlambda1K[][k] = 1 / (hmin * hmin); }
+        if(invsqlambda2K[][k] > 1/(hmin * hmin)) { invsqlambda2K[][k] = 1 / (hmin * hmin); }
+        if(invsqlambda1K[][k] < 1/(hmax * hmax)) { invsqlambda1K[][k] = 1 / (hmax * hmax); }
+        if(invsqlambda2K[][k] < 1/(hmax * hmax)) { invsqlambda2K[][k] = 1 / (hmax * hmax); }
+
+	// contraint maximum aspect ratio of element k
+        real ratio = sqrt(ev[1] / ev[0]);
+        if(ratio > ratiomax) {
+	    invsqlambda1K[][k] = invsqlambda2K[][k] / (ratiomax * ratiomax);
+	}
+	
+        // metric assembly: R_k * diag(invsqlambda1K, invsqlambda2K) * R_k^\top
+        MK[0][k] = invsqlambda1K[][k] * r10K[][k]^2 + invsqlambda2K[][k] * r11K[][k]^2;
+        MK[1][k] = invsqlambda1K[][k] * r10K[][k] * r20K[][k] + invsqlambda2K[][k] * r11K[][k] * r21K[][k];
+        MK[2][k] = invsqlambda1K[][k] * r20K[][k]^2 + invsqlambda2K[][k] * r21K[][k]^2;
+    }
+
+    // define metric tensor at mesh nodes by averaging of local tensors
+    VhP1 m11N, m12N, m22N;
+    real[int][int] MN(3);
+    MN[0].resize(VhP1.ndof);
+    MN[1].resize(VhP1.ndof);
+    MN[2].resize(VhP1.ndof);
+    tensorAveragingNodes(Th, MK, MN);
+    m11N[] = MN[0];
+    m12N[] = MN[1];
+    m22N[] = MN[2];
+    if(plots) { plot(m11N, wait = true, fill = true, value = true, cmm = "m11"); }
+    if(plots) { plot(m12N, wait = true, fill = true, value = true, cmm = "m12"); }
+    if(plots) { plot(m22N, wait = true, fill = true, value = true, cmm = "m22"); }
+
+    // BAMG adaptation
+    Th = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], hmin = hmin);
+    if (plots) { plot(Th, wait = true); }
+    niter++;
+}
+
+// final diagnostic
+plot(Th, cmm = "Adapted mesh", fill = false, wait = true);
+VhP2 gammah = gamma;
+plot(Th, gammah, cmm = "Adapted mesh", fill = false, wait = true);
+cout << "Number of triangles: " << Th.nt << endl;
+cout << "Number of nodes: " << Th.nv << endl;
+
+// save computed mesh
+if (store) { savemesh(Th, "recovery_2.mesh"); }

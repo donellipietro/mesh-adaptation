@@ -81,7 +81,7 @@ while(niter < maxiter && stagnation < 10) {
         if(eta < etamin){ // eta still decreasing
             etamin = eta;
             stagnation = 0; // reset stagnation counter
-	    ThOpt = Th;
+            ThOpt = Th;
         } else {
             stagnation++;
         }

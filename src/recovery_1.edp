@@ -81,7 +81,7 @@ while(niter < maxiter && stagnation < 10) {
         if(eta < etamin){ // eta still decreasing
             etamin = eta;
             stagnation = 0; // reset stagnation counter
-	    ThOpt = Th;
+            ThOpt = Th;
         } else {
             stagnation++;
         }
@@ -116,4 +116,4 @@ cout << "Number of triangles: " << ThOpt.nt << endl;
 cout << "Number of nodes: " << ThOpt.nv << endl;
 
 // save computed mesh
-if (store) { savemesh(ThOpt, "recovery_0.mesh"); }
+if (store) { savemesh(ThOpt, "recovery_1.mesh"); }
