@@ -1,11 +1,10 @@
-load "lapack"
 include "utils.edp"
 
 // Options ----
 verbosity = 0;
 bool store = false;    // whether to store final computed mesh
-bool plots = false;    // whether to display or not intermediate plots
-real hmax = 2*1e-1;    // largest element diameter
+bool plots = false;    // whether to display intermediate plots
+real hmax = 1.5e-1;    // factor controlling largest element diameter
 int nbvx = 1e6;
 real beta = 4.;
 int maxiter = 100;     // maximum number of iterations
@@ -15,15 +14,14 @@ int maxiter = 100;     // maximum number of iterations
 mesh Th = triangulate("data/nodes.txt");
 if (plots) plot(Th, wait = true, cmm = "Starting point");
 
-// Functional spaces
 fespace VhP1(Th, P1); // piecewise linear elements
-fespace VhP0(Th, P0); // piecewise const  elements
+int n = VhP1.ndof;
 
 // load alpha factor
 VhP1 alpha;
 {
     ifstream file("data/alpha.txt");
-    for(int i = 0; i < VhP1.ndof; i++){
+    for(int i = 0; i < n; i++){
         file >> alpha[][i];
     }
 }
@@ -31,37 +29,40 @@ VhP1 alpha;
 VhP1 d11, d12, d22;
 {
     ifstream file("data/D.txt");
-    for(int i = 0; i < VhP1.ndof; i++){
+    for(int i = 0; i < n; i++){
         file >> d11[][i] >> d12[][i] >> d22[][i];
     }
 }
-// tensor field components
+// tensor field components (scaling to amplify anisotropy in high alpha regions)
 d11 = d11 * (4 * (alpha - 1) + 1);
 d12 = d12 * (4 * (alpha - 1) + 1);
 d22 = d22 * (4 * (alpha - 1) + 1);
 
-VhP1 alphaN;                 // geometric mean of eigenvalues
-VhP1 gammaN;                 // anisotropy ratio
-VhP1 r10N, r11N, r20N, r21N; // eigenvector matrix
-VhP1 d11N = d11;
-VhP1 d12N = d12;
-VhP1 d22N = d22;
+real[int] alphaV(n);                          // geometric mean of eigenvalues
+real[int] gammaV(n);                          // anisotropy ratio
+real[int] r10V(n), r11V(n), r20V(n), r21V(n); // eigenvector matrix
+real[int] d11V = d11[];
+real[int] d12V = d12[];
+real[int] d22V = d22[];
 decomposeTensorField(
-   d11N[], d12N[], d22N[],                            // inputs
-   alphaN[], gammaN[], r10N[], r11N[], r20N[], r21N[] // outputs
+   d11V, d12V, d22V,                      // inputs
+   alphaV, gammaV, r10V, r11V, r20V, r21V // outputs
 );
-
-if (plots) {
-   plot(gammaN, wait = true, fill = true, value = true);
-   plot(alphaN, wait = true, fill = true, value = true);
-   plot(r10N,   wait = true, fill = true, value = true);
-   plot(r11N,   wait = true, fill = true, value = true);
-   plot(r20N,   wait = true, fill = true, value = true);
-   plot(r21N,   wait = true, fill = true, value = true);
-}
 
 // start adaptation loop
 for(int niter = 0; niter < maxiter; niter ++) {
+
+    // build finite element representation
+    fespace WhP1(Th, P1);
+    WhP1 alphaN;
+    WhP1 gammaN;
+    WhP1 r10N, r11N, r20N, r21N;
+    alphaN[] = alphaV;
+    gammaN[] = gammaV;
+    r10N[] = r10V;
+    r11N[] = r11V;
+    r20N[] = r20V;
+    r21N[] = r21V;
 
     // build metric from tensor field as
     // M = alpha * R^\top * diag(1/(gamma^beta * alpha * hmax^2), gamma^beta / (alpha * hmax^2)) * R
@@ -69,13 +70,13 @@ for(int niter = 0; niter < maxiter; niter ++) {
     VhP1 gammabetaN = pow(gammaN, beta);                  // gamma^beta
     VhP1 sqlaK = alphaN * gammabetaN;                     // alpha * gamma^beta
     real hmaxtilde = hmax / sqrt(sqlaK[].max);            // hmax / sqrt{alpha * gamma^beta}
-    VhP1 sqlambda1N = hmaxtilde^2 * alphaN * gammabetaN;  // 1./(gamma^beta * alpha * hmax^2)
-    VhP1 sqlambda2N = hmaxtilde^2 * alphaN / gammabetaN;  // gamma^beta / (alpha * hmax^2)
+    VhP1 sqlambda1N = hmaxtilde * hmaxtilde * alphaN * gammabetaN;
+    VhP1 sqlambda2N = hmaxtilde * hmaxtilde * alphaN / gammabetaN;
 
     // compute alpha * R^\top * diag(1/(gamma^beta * alpha * hmax^2), gamma^beta / (alpha * hmax^2)) * R
-    VhP1 m11N = r10N^2 * 1./sqlambda1N + r20N^2 * 1./sqlambda2N;
+    VhP1 m11N = pow(r10N, 2) * 1./sqlambda1N + pow(r20N, 2) * 1./sqlambda2N;
     VhP1 m12N = r10N * r11N * 1./sqlambda1N + r20N * r21N * 1./sqlambda2N;
-    VhP1 m22N = r11N^2 * 1./sqlambda1N + r21N^2 * 1./sqlambda2N;
+    VhP1 m22N = pow(r11N, 2) * 1./sqlambda1N + pow(r21N, 2) * 1./sqlambda2N;
 
     if (plots) {
        plot(m11N, wait = true, fill = true, cmm = "m11N");
@@ -84,13 +85,41 @@ for(int niter = 0; niter < maxiter; niter ++) {
     }
 
     // BAMG adaptation
-    Th = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], nbvx = nbvx); 
+    mesh ThAdapt = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], nbvx = nbvx); 
     if (plots) plot(Th, fill = false, wait = false);
+
+    // reproject tensor on adapted mesh
+    fespace WhP1Adapt(ThAdapt, P1);
+    real[int] d11Old = d11V, d12Old = d12V, d22Old = d22V;
+    matrix A = interpolate(WhP1Adapt, WhP1);
+    real[int] d11VNew = A * d11Old;
+    real[int] d12VNew = A * d12Old;
+    real[int] d22VNew = A * d22Old;
+    
+    // reallocate memory for updated tensor decomposition
+    int m = WhP1Adapt.ndof;
+    d11V.resize(m); d12V.resize(m); d22V.resize(m);
+    alphaV.resize(m); gammaV.resize(m);
+    r10V.resize(m); r11V.resize(m); r20V.resize(m); r21V.resize(m);
+    
+    decomposeTensorField(
+        d11VNew, d12VNew, d22VNew,             // inputs
+        alphaV, gammaV, r10V, r11V, r20V, r21V // outputs
+    );
+    
+    // update tensor data and mesh
+    d11V = d11VNew;
+    d12V = d12VNew;
+    d22V = d22VNew;
+    Th = ThAdapt;
 }
 
 // final diagnostic
 plot(Th, cmm = "Adapted mesh", fill = false, wait = true);
-plot(Th, gammaN, cmm = "Adapted mesh", fill = false, wait = true);
+fespace WhP1(Th, P1);
+WhP1 gammaFEM;
+gammaFEM[] = gammaV;
+plot(Th, gammaFEM, cmm = "Adapted mesh", fill = false, wait = true);
 cout << "Number of triangles: " << Th.nt << endl;
 cout << "Number of nodes: " << Th.nv << endl;
 
