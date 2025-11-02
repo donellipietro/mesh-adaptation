@@ -5,16 +5,16 @@ verbosity = 0;
 bool store = false;    // whether to store final computed mesh
 bool plots = false;    // whether to display intermediate plots
 real hmax = 1e-1;
-real hmin = 7e-3;
+real hmin = 5e-3;
 int nbvx = 1e6;
 real TOL = 0.5;
 int maxiter = 200;     // maximum number of iterations
 
-// ------------------------------------------- anisotropic tensor field -- linear
+// ------------------------------------------- anisotropic tensor field -- quadratic
 func alpha = 1.;
-func gamma = (cos(4 * pi * (y - x)) + 2);
-func nux   = 1. / sqrt(2);
-func nuy   = 1. / sqrt(2);
+func gamma = (cos(4 * pi * (y - x^2)) + 2);
+func nux   = 1. / sqrt(4 * x^2 + 1);
+func nuy   = 2 * x / sqrt(4 * x^2 + 1);
 // tensor components [d11, d12, d22]
 func d11 = alpha * (nux^2 * gamma + nuy^2 / gamma);
 func d12 = alpha * (nux * nuy * (gamma - 1. / gamma));
@@ -54,8 +54,7 @@ real etaold = 1e9;          // error estimator at previous iteration
 real relChange = 1.0;       // relative change in error
 
 // stop if solution stabilizes relative error or maximum number of iteration reached
-real[int] hKvec;
-while(niter < maxiter && relChange > 2e-2) { 
+while(niter < maxiter && relChange > 8e-3) { 
     int n = Th.nt;
 
     // update projected solutions
@@ -93,9 +92,7 @@ while(niter < maxiter && relChange > 2e-2) {
     VhP0 hKnew = pow((TOL * TOL) / (n * Aref * (sqetaK / A)), 0.5);
     VhP1 hNnew;
     hNnew[] = averagingNodes(Th, hKnew[], hmin, hmax);
-    hKvec.resize(VhP1.ndof);
-    hKvec = hNnew[];
-
+    
     // BAMG adapation
     Th = adaptmesh(Th, hNnew, IsMetric = true, nbvx = nbvx);
     if(plots) { plot(Th, cmm = "Th " + niter, wait = true); }
@@ -104,7 +101,7 @@ while(niter < maxiter && relChange > 2e-2) {
 }
 
 // final diagnostic
-plot(Th, cmm = "Final Th", wait = true);
+plot(Th, cmm = "Adapted mesh", fill = false, wait = true);
 VhP1 gammah = gamma;
 plot(Th, gammah, cmm = "Adapted mesh", fill = false, wait = true);
 cout << "Number of triangles: " << Th.nt << endl;
