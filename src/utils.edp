@@ -64,7 +64,7 @@ func bool decomposeTensorField(
         r11[i] = eigvec(1,0);
         r20[i] = eigvec(0,1);
         r21[i] = eigvec(1,1);
-	// eigenvalues
+        // eigenvalues
         ev0[i] = eigval[0];
         ev1[i] = eigval[1];
     }
@@ -107,17 +107,95 @@ func real[int] averagingNodes(mesh &Th, real[int] &vh0, real vmin, real vmax) {
     return(vh1[]);
 }
 
+// computes the matrix logarithm
+//
+// Dh0:    input SPD matrix
+// logDh0: output matrix logarithm
+func bool logTensorFiled(real[int][int] &Dh0, real[int][int] &logDh0) {
+    for(int i = 0; i < Dh0[0].n; i++) {
+        // spectral decomposition of i-th tensor
+        real[int, int] Di(2,2);
+        Di(0,0) = Dh0[0][i];
+        Di(0,1) = Dh0[1][i];
+        Di(1,0) = Dh0[1][i];
+        Di(1,1) = Dh0[2][i];
+        real[int] ev(2);
+        real[int, int] eV(2, 2);
+        EVD(Di, ev, eV, true);
+        real[int] r1i = [eV(0,0), eV(1,0)];
+        real[int] r2i = [eV(0,1), eV(1,1)];
 
+        // compute matrix logarithm by taking the logarithm of its eigenvalues
+        logDh0[0][i] = log(ev[0]) * r1i[0]^2 + log(ev[1]) * r2i[0]^2;
+        logDh0[1][i] = log(ev[0]) * r1i[0]*r1i[1] + log(ev[1]) * r2i[0]*r2i[1];
+        logDh0[2][i] = log(ev[0]) * r1i[1]^2 + log(ev[1]) * r2i[1]^2;
+    }
+    return true;
+}
 
+// computes the matrix exponential
+//
+// Dh0:    input SPD matrix
+// logDh0: output matrix exponential
+func bool expTensorFiled(real[int][int] &Dh0, real[int][int] &expDh0) {
+    for(int i = 0; i < Dh0[0].n; i++) {
+        // spectral decomposition of i-th tensor
+        real[int, int] Di(2,2);
+        Di(0,0) = Dh0[0][i];
+        Di(0,1) = Dh0[1][i];
+        Di(1,0) = Dh0[1][i];
+        Di(1,1) = Dh0[2][i];
+        real[int] ev(2);
+        real[int, int] eV(2, 2);
+        EVD(Di, ev, eV, false);
+        real[int] r1i = [eV(0,0), eV(1,0)];
+        real[int] r2i = [eV(0,1), eV(1,1)];
 
-// Precompute vertex-to-element connectivity once
+        // compute matrix exponential by taking the exponential of its eigenvalues
+        expDh0[0][i] = exp(ev[0]) * r1i[0]^2 + exp(ev[1]) * r2i[0]^2;
+        expDh0[1][i] = exp(ev[0]) * r1i[0]*r1i[1] + exp(ev[1]) * r2i[0]*r2i[1];
+        expDh0[2][i] = exp(ev[0]) * r1i[1]^2 + exp(ev[1]) * r2i[1]^2;
+    }
+    return(true);
+}
+
+// perform nodal averaging of a 2D tensor field defined on mesh elements
+//
+// Th:    input mesh
+// Dh0:   input tensor field evaluted at mesh nodes
+// Dh0av: output averaged tensor field
+func bool tensorAveragingNodes(mesh &Th, real[int][int] &Dh0, real[int][int] &Dh0av) {
+    // move to logarithmic domain (euclidean structure) 
+    real[int][int] logDh0(3);
+    logDh0[0].resize(Th.nt);
+    logDh0[1].resize(Th.nt);
+    logDh0[2].resize(Th.nt);
+    logTensorFiled(Dh0, logDh0);
+
+    // perform average in the logarithmic domain, i.e. compute nodal average of scalar components
+    int ndof = Dh0av[0].n;
+    real[int][int] logDhav(3);
+    logDhav[0].resize(ndof);
+    logDhav[0] = averagingNodes(Th, logDh0[0], -1e9, 1e9);
+    logDhav[1].resize(ndof);
+    logDhav[1] = averagingNodes(Th, logDh0[1], -1e9, 1e9);
+    logDhav[2].resize(ndof);
+    logDhav[2] = averagingNodes(Th, logDh0[2], -1e9, 1e9);
+
+    // back to SPD domain by exponentiation
+    expTensorFiled(logDhav, Dh0av);
+    return true;
+}
+
+// utilities to compute element patch (set of all elements sharing any vertex with a given element)
+
 func int[int,int] buildVertexToElem(mesh &Th) {
     // First pass: count how many elements per vertex
     int[int] count(Th.nv);
     for (int k = 0; k < Th.nt; k++) {
         for (int i = 0; i < 3; i++) {
             count[Th[k][i]]++;
-	}
+        }
     }
 
     // build a matrix representation of patch connectivity. As not all vertices have the same patch cardinality, let
@@ -131,18 +209,16 @@ func int[int,int] buildVertexToElem(mesh &Th) {
     for (int k = 0; k < Th.nt; k++) {
         for (int i = 0; i < 3; i++) {
             int v = Th[k][i];
-	    // increase patch counter for this vertex
-	    vertexToElem(v, 0)++;
-	    // store element k in patch of node v
+            // increase patch counter for this vertex
+            vertexToElem(v, 0)++;
+            // store element k in patch of node v
             vertexToElem(v, vertexToElem(v, 0)) = k;
         }
     }
     return vertexToElem;
 }
-
-
 func int[int] getPatch(mesh &Th, int k, int[int,int] &vertexToElem) {
-    // Collect all unique triangles that share a vertex with triangle k
+    // collect all unique triangles that share a vertex with triangle k
     int[int] mark(Th.nt); // boolean-like marker
     for (int i = 0; i < 3; i++) {
         int vi = Th[k][i];
@@ -152,7 +228,7 @@ func int[int] getPatch(mesh &Th, int k, int[int,int] &vertexToElem) {
         }
     }
 
-    // Build patch
+    // build patch
     int[int] patch(0);
     for (int j = 0; j < Th.nt; j++) {
         if (mark[j]) {
@@ -161,130 +237,4 @@ func int[int] getPatch(mesh &Th, int k, int[int,int] &vertexToElem) {
         }
     }
     return patch;
-}
-
-
-
-
-
-
-
-
-// computes the matrix logarithm
-
-func bool logTensorFiled(real[int][int] &Dh0, real[int][int] &logDh0) {
-    for(int i = 0; i < Dh0[0].n; i++) {
-        real[int, int] Di(2,2);
-        Di(0,0) = Dh0[0][i];
-        Di(0,1) = Dh0[1][i];
-        Di(1,0) = Dh0[1][i];
-        Di(1,1) = Dh0[2][i];
-        real[int] ev(2);
-        real[int, int] eV(2, 2);
-        EVD(Di, ev, eV, true);
-        real[int] r1i = [eV(0,0), eV(1,0)];
-        real[int] r2i = [eV(0,1), eV(1,1)];
-        logDh0[0][i] = log(ev[0]) * r1i[0]^2 + log(ev[1]) * r2i[0]^2;
-        logDh0[1][i] = log(ev[0]) * r1i[0]*r1i[1] + log(ev[1]) * r2i[0]*r2i[1];
-        logDh0[2][i] = log(ev[0]) * r1i[1]^2 + log(ev[1]) * r2i[1]^2;
-    }
-    // cout << logDh0 << endl;
-    return(true);
-}
-
-func bool expTensorFiled(real[int][int] &Dh0, real[int][int] &expDh0) {
-    for(int i = 0; i < Dh0[0].n; i++) {
-        real[int, int] Di(2,2);
-        Di(0,0) = Dh0[0][i];
-        Di(0,1) = Dh0[1][i];
-        Di(1,0) = Dh0[1][i];
-        Di(1,1) = Dh0[2][i];
-        real[int] ev(2);
-        real[int, int] eV(2, 2);
-        EVD(Di, ev, eV, false);
-        real[int] r1i = [eV(0,0), eV(1,0)];
-        real[int] r2i = [eV(0,1), eV(1,1)];
-        expDh0[0][i] = exp(ev[0]) * r1i[0]^2 + exp(ev[1]) * r2i[0]^2;
-        expDh0[1][i] = exp(ev[0]) * r1i[0]*r1i[1] + exp(ev[1]) * r2i[0]*r2i[1];
-        expDh0[2][i] = exp(ev[0]) * r1i[1]^2 + exp(ev[1]) * r2i[1]^2;
-    }
-    return(true);
-}
-
-func bool tensorAveragingNodes(mesh &Th, real[int][int] &Dh0, real[int][int] &Dh0av) {
-
-    real[int][int] logDh0(3);
-    logDh0[0].resize(Th.nt);
-    logDh0[1].resize(Th.nt);
-    logDh0[2].resize(Th.nt);
-    logTensorFiled(Dh0, logDh0);
-
-    int ndof = Dh0av[0].n;
-    real[int][int] logDhav(3);
-    logDhav[0].resize(ndof);
-    logDhav[0] = averagingNodes(Th, logDh0[0], -1e9, 1e9);
-    logDhav[1].resize(ndof);
-    logDhav[1] = averagingNodes(Th, logDh0[1], -1e9, 1e9);
-    logDhav[2].resize(ndof);
-    logDhav[2] = averagingNodes(Th, logDh0[2], -1e9, 1e9);
-
-    expTensorFiled(logDhav, Dh0av);
-    return(true);
-    
-}
-
-
-
-
-
-func real computeEccentricity(mesh &Th, int k) {
-
-    real[int][int] Triangle(3);
-    Triangle[0].resize(2);
-    Triangle[1].resize(2);
-    Triangle[2].resize(2);
-
-    for(int i = 0; i<3; ++i){
-        Triangle[i][0] = Th[k][i].x;
-        Triangle[i][1] = Th[k][i].y;
-    }
-
-    real[int] A = Triangle[0];
-    real[int] B = Triangle[1];
-    real[int] C = Triangle[2];
-
-    // Compute centroid G
-    real[int] G(2);
-    G[0] = (A[0] + B[0] + C[0])/3;
-    G[1] = (A[1] + B[1] + C[1])/3;
-
-    // Centered coordinates
-    real[int] An(2), Bn(2), Cn(2);
-    An[0] = A[0] - G[0]; An[1] = A[1] - G[1];
-    Bn[0] = B[0] - G[0]; Bn[1] = B[1] - G[1];
-    Cn[0] = C[0] - G[0]; Cn[1] = C[1] - G[1];
-
-    // Compute covariance matrix (up to scaling)
-    real Sxx = (An[0]^2 + Bn[0]^2 + Cn[0]^2)/3;
-    real Syy = (An[1]^2 + Bn[1]^2 + Cn[1]^2)/3;
-    real Sxy = (An[0]*An[1] + Bn[0]*Bn[1] + Cn[0]*Cn[1])/3;
-
-    // Compute eigenvalues of the covariance matrix
-    real trace = Sxx + Syy;
-    real det = Sxx*Syy - Sxy^2;
-    real delta = sqrt(trace^2/4 - det);
-    real lambda1 = trace/2 + delta;
-    real lambda2 = trace/2 - delta;
-
-    // Compute eccentricity: e = sqrt(1 - (lambda2/lambda1))
-    real ecc = sqrt(1.0 - lambda2/lambda1);
-
-    // Compute r = lambda1/lambda2
-    real ratio = lambda1/lambda2;
-
-    // cout << "Eccentricity of the Steiner ellipse: " << ecc << endl;
-    // cout << "Ratio of the Steiner ellipse: " << ratio << endl;
-
-    return ratio;
-
 }
