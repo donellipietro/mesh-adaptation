@@ -1,0 +1,121 @@
+include "utils.edp"
+
+// Options ----
+verbosity = 0;
+bool store = false;    // whether to store final computed mesh
+bool plots = false;    // whether to display intermediate plots
+real hmax = 5e-2;
+real hmin = 1e-3;
+int nbvx = 1e6;
+real TOL = 0.3;
+int maxiter = 200;     // maximum number of iterations
+real trf = 0.9;        // tolerance reduction factor
+
+// ------------------------------------------- anisotropic tensor field -- quadratic
+func alpha = 1.;
+func gamma = (cos(4 * pi * (y - x^2)) + 2);
+func nux   = 1. / sqrt(4 * x^2 + 1);
+func nuy   = 2 * x / sqrt(4 * x^2 + 1);
+// tensor components [d11, d12, d22]
+func d11 = alpha * (nux^2 * gamma + nuy^2 / gamma);
+func d12 = alpha * (nux * nuy * (gamma - 1. / gamma));
+func d22 = alpha * (nuy^2 * gamma + nux^2 / gamma);
+
+// log transformed diffusion tensor components [logd11, logd12, logd22]
+func logd11 = nux * nux * log(alpha * gamma) + nuy * nuy * log(alpha / gamma);
+func logd12 = nux * nuy * log(alpha * gamma) - nux * nuy * log(alpha / gamma);
+func logd22 = nuy * nuy * log(alpha * gamma) + nux * nux * log(alpha / gamma);
+
+// build mesh
+mesh Th = square(20, 20);
+if(plots) plot(Th, wait = true);
+
+// Functional spaces
+fespace VhP1(Th, P1);
+fespace VhP0(Th, P0);
+
+// discretized diffusion tensor components
+VhP1 logd11h, logd12h, logd22h; // discrete gradient
+
+// integral of L^2 norm of solution gradient
+varf vsqetaK(unused, chiK) = 
+    int2d(Th)(
+        chiK*(
+            square(dx(logd11h)) + 2*square(dx(logd12h)) + square(dx(logd22h)) +
+            square(dy(logd11h)) + 2*square(dy(logd12h)) + square(dy(logd22h))
+        )
+    );
+
+// start adaptation loop
+real eta = 1e9;         // current global anisotropic error estimator
+real TOL2 = TOL;        // Adaptive internal tolerance
+real etamin = 1e9;      // Smallest eta observed
+int stagnation = 0;     // Counter for consecutive improvements below TOL
+int niter = 0;          // Iteration counter
+int cnt = 0;
+
+// stop if solution doesn't improve error or maximum number of iteration reached
+while(niter < maxiter && stagnation < 10) {
+    int n = Th.nt;
+
+    // update projected solutions
+    logd11h = logd11;
+    logd12h = logd12;
+    logd22h = logd22;
+
+    // compute per-element isotropic error estimator \eta_K = \int_K \| \nabla u_h |_K \|_2^2
+    VhP0 etaK;
+    etaK[] = vsqetaK(0, VhP0);
+    etaK = sqrt(etaK);
+    if(plots) { plot(etaK, cmm = "sqetaK " + niter,  wait=true, fill=true, value=true); }
+    // update anisotropic error estimator \| \eta_K \|_{\infty}
+    eta = etaK[].max;
+
+    // adaptive stopping criterion
+    if(eta < TOL){
+        // eta below target tolerance
+        if(eta < etamin){ // eta still decreasing
+            etamin = eta;
+            stagnation = 0; // reset stagnation counter
+        } else {
+            stagnation++;
+        }
+    } else {
+        cnt++;
+        if (cnt >= 5) {
+            TOL2 = TOL2 * trf;
+            cnt = 0;
+        }
+    }
+
+    // output diagnostics
+    cout << "iteration:    " << niter << endl;
+    cout << "mesh size:    " << n << endl;
+    cout << "eta:          " << eta << endl;
+    cout << "stagnation:   " << stagnation << endl;
+    cout << endl;
+
+    // build error estimator field (to be used as scalar metric in adaptation)
+    VhP0 A = area;
+    VhP0 Aref = A[].sum;
+    VhP0 hKnew = pow((TOL2 * TOL2) / (Aref * (square(etaK) / A)), 0.5);
+    VhP1 hNnew;
+    hNnew[] = averagingNodes(Th, hKnew[], hmin, hmax);
+    if(plots) plot(hNnew, cmm = "hN " + niter, wait=true, fill=true, value=true);
+
+    // BAMG adapation
+    Th = adaptmesh(Th, hNnew, IsMetric = true, nbvx = nbvx);
+    if(plots) { plot(Th, cmm = "Th " + niter, wait = true); }
+
+    niter++;
+}
+
+// final diagnostic
+plot(Th, cmm = "Adapted mesh", fill = false, wait = true);
+VhP1 gammah = gamma;
+plot(Th, gammah, cmm = "Adapted mesh", fill = false, wait = true);
+cout << "Number of triangles: " << Th.nt << endl;
+cout << "Number of nodes: " << Th.nv << endl;
+
+// save computed mesh
+if (store) { savemesh(Th, "gradient_0.mesh"); }

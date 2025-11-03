@@ -54,7 +54,7 @@ decomposeTensorField(
    d11N[], d12N[], d22N[],           // inputs
    ev0, ev1, r10V, r11V, r20V, r21V  // outputs
 );
-
+// compute eigenvalue geometric mean and anisotropy ratio
 for(int i = 0; i < n; ++i) {
    alphaV[i] = sqrt(ev0[i] * ev1[i]);
    gammaV[i] = ev0[i] / alphaV[i];
@@ -125,7 +125,7 @@ for(int niter = 0; niter < maxiter; niter ++) {
         d11VNew, d12VNew, d22VNew,       // inputs
         ev0, ev1, r10V, r11V, r20V, r21V // outputs
     );
-
+    // update eigenvalue geometric mean and anisotropy ratio
     for(int i = 0; i < m; ++i) {
         alphaV[i] = sqrt(ev0[i] * ev1[i]);
         gammaV[i] = ev0[i] / alphaV[i];
