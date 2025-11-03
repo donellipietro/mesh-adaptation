@@ -14,9 +14,9 @@ real ratiomax = 1.5;
 
 // ------------------------------------------- anisotropic tensor field -- quadratic
 func alpha = 1.;
-func gamma = (cos(4 * pi * (y - x)) + 2);
-func nux   = 1. / sqrt(2);
-func nuy   = 1. / sqrt(2);
+func gamma = (cos(4 * pi * (y - x^2)) + 2);
+func nux   = 1. / sqrt(4 * x^2 + 1);
+func nuy   = 2 * x / sqrt(4 * x^2 + 1);
 // tensor components [d11, d12, d22]
 func d11 = alpha * (nux^2 * gamma + nuy^2 / gamma);
 func d12 = alpha * (nux * nuy * (gamma - 1. / gamma));
@@ -201,4 +201,4 @@ cout << "Number of triangles: " << Th.nt << endl;
 cout << "Number of nodes: " << Th.nv << endl;
 
 // save computed mesh
-if (store) { savemesh(Th, "gradient_2.mesh"); }
+if (store) { savemesh(Th, "gradient_3.mesh"); }
