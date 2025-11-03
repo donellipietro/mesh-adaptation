@@ -9,6 +9,7 @@ real hmin = 7e-3;
 int nbvx = 1e6;
 real TOL = 0.5;
 int maxiter = 200;     // maximum number of iterations
+real trf = 0.9;        // tolerance reduction factor
 
 // ------------------------------------------- anisotropic tensor field -- linear
 func alpha = 1.;
@@ -53,7 +54,7 @@ real TOL2 = TOL;        // Adaptive internal tolerance
 real etamin = 1e9;      // Smallest eta observed
 int stagnation = 0;     // Counter for consecutive improvements below TOL
 int niter = 0;          // Iteration counter
-mesh ThOpt = Th;        // optimal adapted mesh
+int cnt = 0;            
 
 // stop if solution stabilizes relative error or maximum number of iteration reached
 while(niter < maxiter && stagnation < 10) { 
@@ -81,9 +82,14 @@ while(niter < maxiter && stagnation < 10) {
         if(eta < etamin){ // eta still decreasing
             etamin = eta;
             stagnation = 0; // reset stagnation counter
-            ThOpt = Th;
         } else {
             stagnation++;
+        }
+    } else {
+        cnt++;
+        if (cnt >= 5) {
+            TOL2 = TOL2 * trf;
+            cnt = 0;
         }
     }
     
@@ -109,11 +115,11 @@ while(niter < maxiter && stagnation < 10) {
 }
 
 // final diagnostic
-plot(ThOpt, cmm = "Adapted mesh", fill = false, wait = true);
+plot(Th, cmm = "Adapted mesh", fill = false, wait = true);
 VhP1 gammah = gamma;
-plot(ThOpt, gammah, cmm = "Adapted mesh", fill = false, wait = true);
-cout << "Number of triangles: " << ThOpt.nt << endl;
-cout << "Number of nodes: " << ThOpt.nv << endl;
+plot(Th, gammah, cmm = "Adapted mesh", fill = false, wait = true);
+cout << "Number of triangles: " << Th.nt << endl;
+cout << "Number of nodes: " << Th.nv << endl;
 
 // save computed mesh
-if (store) { savemesh(ThOpt, "recovery_0.mesh"); }
+if (store) { savemesh(Th, "recovery_0.mesh"); }

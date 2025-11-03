@@ -49,25 +49,25 @@ VhP1 logd11h, logd12h, logd22h; // discrete gradient
 // \int_t \partial_x L_h\^top * \partial_x L_h
 varf vg11K(unused, chiK)
      = int2d(Th)(
-	   chiK * (
-	       square(dx(logd11R) - dx(logd11h)) +  2*square(dx(logd12R) - dx(logd12h)) + square(dx(logd22R) - dx(logd22h))
-	   )
+           chiK * (
+               square(dx(logd11R) - dx(logd11h)) +  2*square(dx(logd12R) - dx(logd12h)) + square(dx(logd22R) - dx(logd22h))
+           )
 );
 // \int_t \partial_x L_h\^top * \partial_y L_h
 varf vg12K(unused, chiK)
      = int2d(Th)(
            chiK * (
-	       (dx(logd11R) - dx(logd11h)) * (dy(logd11R) - dy(logd11h)) +
-	   2 * (dx(logd12R) - dx(logd12h)) * (dy(logd12R) - dy(logd12h)) +
+               (dx(logd11R) - dx(logd11h)) * (dy(logd11R) - dy(logd11h)) +
+           2 * (dx(logd12R) - dx(logd12h)) * (dy(logd12R) - dy(logd12h)) +
                (dx(logd22R) - dx(logd22h)) * (dy(logd22R) - dy(logd22h))
-	   )
+           )
 );
 // \int_t \partial_y L_h\^top * \partial_y L_h
 varf vg22K(unused, chiK)
      = int2d(Th)(
            chiK * (
-	       square(dy(logd11R) - dy(logd11h)) + 2 * square(dy(logd12R) - dy(logd12h)) + square(dy(logd22R) - dy(logd22h))
-	   )
+               square(dy(logd11R) - dy(logd11h)) + 2 * square(dy(logd12R) - dy(logd12h)) + square(dy(logd22R) - dy(logd22h))
+           )
 );
 
 // approximation of H^1-seminorm of discretization error: \int_D \| R(\nabla u_h) - \nabla u_h \|_2^2, with R the recovery gradient
@@ -120,10 +120,10 @@ while(niter < maxiter && stagnation < 10) {
         }
     } else {
         cnt++;
-	if (cnt >= 5) {
+        if (cnt >= 5) {
             TOL2 = TOL2 * trf;
-	    cnt = 0;
-	}
+            cnt = 0;
+        }
     }
 
     // output diagnostics
@@ -151,7 +151,7 @@ while(niter < maxiter && stagnation < 10) {
     MK[0].resize(Th.nt);
     MK[1].resize(Th.nt);
     MK[2].resize(Th.nt);
-	
+        
     for(int k = 0; k < Th.nt; k++){
         // local anisotropy matrix of the gradient error on element k
         real[int, int] GK(2,2);
@@ -160,8 +160,8 @@ while(niter < maxiter && stagnation < 10) {
         GK(1,0) = G12K[][k];
         GK(1,1) = G22K[][k];
 
-	// G_k spectral decomposition
-	// G_k = R_k^\top * diag(ev[1], ev[2]) * R_k
+        // G_k spectral decomposition
+        // G_k = R_k^\top * diag(ev[1], ev[2]) * R_k
         real[int] ev(2);
         real[int, int] eV(2, 2);
         EVD(GK, ev, eV, true);
@@ -170,27 +170,27 @@ while(niter < maxiter && stagnation < 10) {
         r20K[][k] = eV(0,0);
         r21K[][k] = eV(1,0);
 
-	// build local metric tensor
-	// M_k = R_k * diag(invsqlambda1K, invsqlambda2K) * R_k^\top
+        // build local metric tensor
+        // M_k = R_k * diag(invsqlambda1K, invsqlambda2K) * R_k^\top
 
         sqeta1K[][k] = ev[0];
         sqeta2K[][k] = ev[1];
-	// the more anistropic the local error, the more stretched the metric tensor becomes along R_k's eigenvectors
+        // the more anistropic the local error, the more stretched the metric tensor becomes along R_k's eigenvectors
         invsqlambda1K[][k] = (2 * n * Aref * (sqeta2K[][k] / Ak[][k])) / (TOL2 * TOL2);
         invsqlambda2K[][k] = (2 * n * Aref * (sqeta1K[][k] / Ak[][k])) / (TOL2 * TOL2);
-		
+                
         // clamp eigenvalues
         if(invsqlambda1K[][k] > 1/(hmin * hmin)) { invsqlambda1K[][k] = 1 / (hmin * hmin); }
         if(invsqlambda2K[][k] > 1/(hmin * hmin)) { invsqlambda2K[][k] = 1 / (hmin * hmin); }
         if(invsqlambda1K[][k] < 1/(hmax * hmax)) { invsqlambda1K[][k] = 1 / (hmax * hmax); }
         if(invsqlambda2K[][k] < 1/(hmax * hmax)) { invsqlambda2K[][k] = 1 / (hmax * hmax); }
 
-	// contraint maximum aspect ratio of element k
+        // contraint maximum aspect ratio of element k
         real ratio = sqrt(ev[1] / ev[0]);
         if(ratio > ratiomax) {
-	    invsqlambda1K[][k] = invsqlambda2K[][k] / (ratiomax * ratiomax);
-	}
-	
+            invsqlambda1K[][k] = invsqlambda2K[][k] / (ratiomax * ratiomax);
+        }
+        
         // metric assembly: R_k * diag(invsqlambda1K, invsqlambda2K) * R_k^\top
         MK[0][k] = invsqlambda1K[][k] * r10K[][k]^2 + invsqlambda2K[][k] * r11K[][k]^2;
         MK[1][k] = invsqlambda1K[][k] * r10K[][k] * r20K[][k] + invsqlambda2K[][k] * r11K[][k] * r21K[][k];

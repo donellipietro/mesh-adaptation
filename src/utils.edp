@@ -40,12 +40,12 @@ func bool EVD(real[int, int] &M, real[int] &ev, real[int, int] &eV, bool POS) {
 // alpha = \sqrt{\lambda_0 * \lambda_1}, gamma = \frac{\lambda_0}{alpha}
 //
 // [d11, d12, d22]: input SPD matrix
-// alpha: output eigenvalues geometric mean
-// gamma: output anisotropy ratio
+// ev0: output first  eigenvalue
+// ev1: output second eigenvalue
 // [r10, r11, r20, r21]: output eigenvector matrix
 func bool decomposeTensorField(
    real[int] &d11, real[int] &d12, real[int] &d22,
-   real[int] &alpha, real[int] &gamma,
+   real[int] &ev0, real[int] &ev1,
    real[int] &r10, real[int] &r11, real[int] &r20, real[int] &r21) {
    int size = d11.n;
    for(int i = 0; i < size; i++) {
@@ -56,20 +56,20 @@ func bool decomposeTensorField(
         Di(1,0) = d12[i];
         Di(1,1) = d22[i];
         // compute eigen decomposition
-        real[int] ev(2);
-        real[int, int] eV(2, 2);
-        EVD(Di, ev, eV, true);
-        // build eigenvector matrix
-        r10[i] = eV(0,0);
-        r11[i] = eV(1,0);
-        r20[i] = eV(0,1);
-        r21[i] = eV(1,1);
-        alpha[i] = sqrt(ev[0]*ev[1]); // eigenvalues geometric mean
-        gamma[i] = ev[0]/alpha[i];    // anisotropy ratio
+        real[int] eigval(2);
+        real[int, int] eigvec(2, 2);
+        EVD(Di, eigval, eigvec, true);
+        // eigenvectors
+        r10[i] = eigvec(0,0);
+        r11[i] = eigvec(1,0);
+        r20[i] = eigvec(0,1);
+        r21[i] = eigvec(1,1);
+	// eigenvalues
+        ev0[i] = eigval[0];
+        ev1[i] = eigval[1];
     }
     return true;
 }
-
 
 // compute an area-weighted nodal average of an elementwise (P0) scalar field.
 //
