@@ -1,0 +1,28 @@
+load "iovtk"
+load "msh3"
+load "mmg"
+load "mshmet"
+load "medit"
+
+// Create unit cube mesh
+int n = 20;
+mesh Th2 = square(n, n, [x, y]);
+mesh3 Th = buildlayers(Th2, n, zbound = [0, 1]);
+
+// Run anisotropic remeshing
+mesh3 ThNew = Th;
+for(int i = 0; i<5; i++){
+
+    int nv = ThNew.nv;
+    fespace Vh(ThNew, P1);
+    Vh u = exp(-100*((x-0.5)^2 + (y-0.5)^2 + (z-0.5)^2)); // a "bump" function
+    real[int] metric = mshmet(ThNew, u, err = 1e-3, aniso = true, hmin = 1e-3);
+    
+    ThNew = mmg3d(ThNew, metric=metric);
+
+    medit("aniso-mesh", ThNew);
+}
+
+// Visualize
+medit("aniso-mesh", ThNew);
+savevtk("cube.vtk", ThNew);

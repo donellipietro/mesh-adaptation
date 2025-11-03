@@ -1,0 +1,40 @@
+include "utils.idp"
+
+int scenario = 3;
+real TOL = 0.75;
+mesh Th = readmesh("mesh/gradient_based_aniso_s"+scenario+"_"+TOL+".mesh");
+plot(Th, cmm = "Adapted mesh", fill = false, wait = true);
+
+fespace VhP0(Th, P0);
+
+VhP0 ratioFinal;
+for(int k = 0; k < Th.nt; ++k) {
+    ratioFinal[][k] = computeEccentricity(Th, k);
+}
+VhP0 areaFinal = area;
+mesh network = trunc(Th, ratioFinal>4 & areaFinal < 0.0001 | ratioFinal>1 & areaFinal < 0.00004);
+// mesh networkNew = trunc(network, nTonEdge > 1);
+plot(network, cmm = "Adapted mesh", fill = false, wait = true);
+
+
+fespace VhP0Network(network, P0);
+
+int ntOld = Th.nt;
+while(ntOld != network.nt) {
+
+    ntOld = network.nt;
+
+    VhP0Network nAdjTriangle;
+    for(int k = 0; k < network.nt; ++k) {
+        for(int i = 0; i<3; ++i){
+            int j = i;
+            if(network[k] != network[k].adj(j)) {
+                nAdjTriangle[][k] += 1;
+            }
+        }
+    }
+    plot(network, nAdjTriangle, cmm = "Network mesh", fill = true, wait = true);
+    network = trunc(Th, nAdjTriangle > 1);
+    plot(network, cmm = "Network mesh polished", fill = false, wait = true);
+
+}

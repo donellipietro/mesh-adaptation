@@ -1,0 +1,136 @@
+load "msh3"
+load "mmg"
+load "medit"
+load "lapack"
+load "iovtk"
+
+func bool POWER(real[int, int] &M, real exp) {
+    
+    // EVD
+    complex [int] cev(3);
+    complex [int, int] ceV(3, 3);
+    dgeev(M, cev, ceV);
+
+    // real part
+    real [int] ev(3);
+    real [int, int] eV(3, 3);
+    for(int i = 0; i<3; i++) {
+        ev[i] = pow(real(cev[i]), exp);  // power
+        for(int j = 0; j<3; j++) {
+            eV(i,j) = real(ceV(i,j));
+            M(i,j) = 0;
+        }
+    }
+
+    for(int r = 0; r < 3; r++) {
+        for(int i = 0; i<3; i++) {
+            for(int j = 0; j<3; j++) {
+                M(i,j) += ev[r] * eV(r,i) * eV(r,j);
+            }
+        }
+    }
+
+}
+
+
+func bool CHANGE(real[int, int] &M) {
+    
+    // EVD
+    complex [int] cev(3);
+    complex [int, int] ceV(3, 3);
+    dgeev(M, cev, ceV);
+
+    // real part
+    real [int] ev(3);
+    real [int, int] eV(3, 3);
+    for(int i = 0; i<3; i++) {
+        ev[i] = real(cev[i]);  // power
+        for(int j = 0; j<3; j++) {
+            eV(i,j) = real(ceV(i,j));
+            M(i,j) = 0;
+        }
+    }
+    real [int] neweV(3);
+    if(ev[0]/ev[2]>4) {
+        neweV = [10000, 0.01, 0.01];
+    } else {
+        neweV = [1, 1, 1];
+    }
+     
+    for(int r = 0; r < 3; r++) {
+        for(int i = 0; i<3; i++) {
+            for(int j = 0; j<3; j++) {
+                M(i,j) += neweV[r] * eV(r,i) * eV(r,j);
+            }
+        }
+    }
+
+}
+
+
+mesh3 ThData = readmesh3("data/DTI3D/mesh_centered.mesh");
+medit("brain", ThData);
+
+
+fespace VhData(ThData, P1);
+VhData d11, d12, d13, d22, d23, d33, mu;
+real tmp;
+
+{
+    ifstream file("data/DTI3D/dti_smooth.txt");
+    for(int i = 0; i < VhData.ndof; i++){
+        file >> d11[][i] >> d12[][i] >> d13[][i] >> 
+                tmp >> d22[][i] >>      d23[][i] >>
+                tmp >> tmp      >>      d33[][i];
+        mu[][i] = d11[][i]*(d22[][i]*d33[][i] - d23[][i]^2)
+                  - d12[][i]*(d12[][i]*d33[][i] - d13[][i]*d23[][i])
+                  + d13[][i]*(d12[][i]*d23[][i] - d13[][i]*d22[][i]);
+    }
+}
+
+savevtk("initial_brain.vtk", ThData, mu, dataname = "mu");
+
+// Run anisotropic remeshing
+mesh3 ThNew = ThData;
+fespace VhNew(ThNew, P1);
+for(int it = 0; it<1; it++){
+
+    int nv = ThNew.nv;
+    real[int] metric(6 * nv);
+
+    // Build custom anisotropic metric tensor at each vertex
+    for (int i = 0; i < nv; i++) {
+
+        real[int, int] D(3,3);
+        D(0, 0) = d11[][i];
+        D(0, 1) = d12[][i];
+        D(0, 2) = d13[][i];
+        D(1, 0) = d12[][i];
+        D(1, 1) = d22[][i];
+        D(1, 2) = d23[][i];
+        D(2, 0) = d13[][i];
+        D(2, 1) = d23[][i];
+        D(2, 2) = d33[][i];
+
+        // Invert the matrix
+        real[int, int] M = D^-1;
+
+        POWER(M, 4);
+        M = M / 10000000000;
+        // CHANGE(M);
+        // M = M * 100;
+
+        metric[6*i + 0] = M(0,0);  // M11
+        metric[6*i + 1] = M(0,1);  // M12
+        metric[6*i + 2] = M(1,1);  // M22
+        metric[6*i + 3] = M(0,2);  // M13
+        metric[6*i + 4] = M(1,2);  // M23
+        metric[6*i + 5] = M(2,2);  // M33
+    }
+    
+    ThNew = mmg3d(ThNew, metric=metric);
+}
+
+// Visualize
+// medit("aniso-mesh", ThNew);
+savevtk("aniso_brain.vtk", ThNew);
