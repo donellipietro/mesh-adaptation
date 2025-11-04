@@ -1,5 +1,5 @@
 // 
-// tensor-induced metric based adaptation, linear field
+// tensor-induced metric based adaptation, DTI
 //
 
 include "utils.edp"
@@ -8,29 +8,40 @@ include "utils.edp"
 verbosity = 0;
 bool store = false;    // whether to store final computed mesh
 bool plots = false;    // whether to display intermediate plots
-real hmax = 7.5e-2;    // maximum element size
-real ratiomax = 2.5;   // maximum element aspect ratio
+real hmax = 1.5e-1;    // maximum element size
+real ratiomax = 2;     // maximum element aspect ratio
 int nbvx = 1e6;
-real beta = 2.;
+real beta = 4.;
 int maxiter = 100;     // maximum number of iterations
 // ------------
 
-func alpha = 1.;
-func gamma = (cos(4 * pi * (y - x)) + 2);
-func nux   = 1. / sqrt(2);
-func nuy   = 1. / sqrt(2);
-// tensor components [d11, d12, d22]
-func d11 = alpha * (nux^2 * gamma + nuy^2 / gamma);
-func d12 = alpha * (nux * nuy * (gamma - 1. / gamma));
-func d22 = alpha * (nuy^2 * gamma + nux^2 / gamma);
-
-// build Delaunay mesh of unit square
-mesh Th = square(100, 100);
+// build Delaunay mesh of convex hull
+mesh Th = triangulate("data/dti/nodes.txt");
 if (plots) plot(Th, wait = true, cmm = "Starting point");
 
-// Functional spaces
 fespace VhP1(Th, P1); // piecewise linear elements
 int n = VhP1.ndof;
+
+// load alpha factor
+VhP1 alpha;
+{
+    ifstream file("data/dti/alpha.txt");
+    for(int i = 0; i < n; i++){
+        file >> alpha[][i];
+    }
+}
+// load tensor field [d11, d12, d22] evaluated at data/tensor/nodes.txt
+VhP1 d11, d12, d22;
+{
+    ifstream file("data/dti/D.txt");
+    for(int i = 0; i < n; i++){
+        file >> d11[][i] >> d12[][i] >> d22[][i];
+    }
+}
+// tensor field components (scaling to amplify anisotropy in high alpha regions)
+d11 = d11 * (4 * (alpha - 1) + 1);
+d12 = d12 * (4 * (alpha - 1) + 1);
+d22 = d22 * (4 * (alpha - 1) + 1);
 
 real[int] r10V(n), r11V(n), r20V(n), r21V(n); // eigenvector matrix
 real[int] ev0(n), ev1(n);                     // eigenvalues pair
@@ -47,7 +58,7 @@ decomposeTensorField(
    d11N[], d12N[], d22N[],           // inputs
    ev0, ev1, r10V, r11V, r20V, r21V  // outputs
 );
-
+// compute eigenvalue geometric mean and anisotropy ratio
 for(int i = 0; i < n; ++i) {
    alphaV[i] = sqrt(ev0[i] * ev1[i]);
    gammaV[i] = ev0[i] / alphaV[i];
@@ -97,7 +108,7 @@ for(int niter = 0; niter < maxiter; niter ++) {
     }
 
     // BAMG adaptation
-    mesh ThAdapt = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], nbvx = nbvx);
+    mesh ThAdapt = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], nbvx = nbvx); 
     if (plots) plot(Th, fill = false, wait = false);
 
     // reproject tensor on adapted mesh
@@ -118,7 +129,7 @@ for(int niter = 0; niter < maxiter; niter ++) {
         d11VNew, d12VNew, d22VNew,       // inputs
         ev0, ev1, r10V, r11V, r20V, r21V // outputs
     );
-
+    // update eigenvalue geometric mean and anisotropy ratio
     for(int i = 0; i < m; ++i) {
         alphaV[i] = sqrt(ev0[i] * ev1[i]);
         gammaV[i] = ev0[i] / alphaV[i];

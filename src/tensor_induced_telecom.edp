@@ -8,15 +8,15 @@ include "utils.edp"
 verbosity = 0;
 bool store = false;    // whether to store final computed mesh
 bool plots = false;    // whether to display intermediate plots
-real hmax = 1.5e-1;    // maximum element size
+real hmax = 7.5*1e2;   // maximum element size
 real ratiomax = 2;     // maximum element aspect ratio
 int nbvx = 1e6;
-real beta = 4.;
+real beta = 2;
 int maxiter = 100;     // maximum number of iterations
 // ------------
 
 // build Delaunay mesh of convex hull
-mesh Th = triangulate("data/nodes.txt");
+mesh Th = triangulate("data/telecom/nodes.txt");
 if (plots) plot(Th, wait = true, cmm = "Starting point");
 
 fespace VhP1(Th, P1); // piecewise linear elements
@@ -25,15 +25,15 @@ int n = VhP1.ndof;
 // load alpha factor
 VhP1 alpha;
 {
-    ifstream file("data/alpha.txt");
+    ifstream file("data/telecom/alpha.txt");
     for(int i = 0; i < n; i++){
         file >> alpha[][i];
     }
 }
-// load tensor field [d11, d12, d22] evaluated at data/tensor/nodes.txt
+// load tensor field [d11, d12, d22] evaluated at data/telecom/nodes.txt
 VhP1 d11, d12, d22;
 {
-    ifstream file("data/D.txt");
+    ifstream file("data/telecom/D.txt");
     for(int i = 0; i < n; i++){
         file >> d11[][i] >> d12[][i] >> d22[][i];
     }
@@ -123,7 +123,7 @@ for(int niter = 0; niter < maxiter; niter ++) {
     int m = WhP1Adapt.ndof;
     d11V.resize(m); d12V.resize(m); d22V.resize(m);
     alphaV.resize(m); gammaV.resize(m);
-    r10V.resize(m); r11V.resize(m); r20V.resize(m); r21V.resize(m);
+    ev0.resize(m); ev1.resize(m); r10V.resize(m); r11V.resize(m); r20V.resize(m); r21V.resize(m);
     
     decomposeTensorField(
         d11VNew, d12VNew, d22VNew,       // inputs
