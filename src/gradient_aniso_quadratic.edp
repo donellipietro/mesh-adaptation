@@ -1,18 +1,22 @@
+// 
+// anisotropic gradient based adaptation, quadratic field
+//
+
 include "utils.edp"
 
 // Options ----
 verbosity = 0;
 bool store = false;    // whether to store final computed mesh
 bool plots = false;    // whether to display intermediate plots
-real hmax = 5e-2;
-real hmin = 1e-3;
+real hmax = 5e-2;      // maximum element size
+real hmin = 1e-3;      // minimum element size
+real ratiomax = 1.5;   // maximum element aspect ratio
 int nbvx = 1e6;
 real TOL = 0.25;
 int maxiter = 200;     // maximum number of iterations
 real trf = 0.9;        // tolerance reduction factor
-real ratiomax = 1.5;
+// ------------
 
-// ------------------------------------------- anisotropic tensor field -- quadratic
 func alpha = 1.;
 func gamma = (cos(4 * pi * (y - x^2)) + 2);
 func nux   = 1. / sqrt(4 * x^2 + 1);

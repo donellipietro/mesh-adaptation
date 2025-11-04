@@ -1,3 +1,7 @@
+// 
+// anisotropic gradient based adaptation, linear field
+//
+
 include "utils.edp"
 
 // Options ----
@@ -11,8 +15,8 @@ real TOL = 0.25;
 int maxiter = 200;     // maximum number of iterations
 real trf = 0.9;        // tolerance reduction factor
 real ratiomax = 1.5;
+// ------------
 
-// ------------------------------------------- anisotropic tensor field -- quadratic
 func alpha = 1.;
 func gamma = (cos(4 * pi * (y - x)) + 2);
 func nux   = 1. / sqrt(2);

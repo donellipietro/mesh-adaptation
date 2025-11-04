@@ -1,20 +1,24 @@
+// 
+// tensor-induced metric based adaptation, linear field
+//
+
 include "utils.edp"
 
 // Options ----
 verbosity = 0;
 bool store = false;    // whether to store final computed mesh
 bool plots = false;    // whether to display intermediate plots
-real hmax = 7.5e-2;    // factor controlling largest element diameter
+real hmax = 7.5e-2;    // maximum element size
+real ratiomax = 2.5;   // maximum element aspect ratio
 int nbvx = 1e6;
 real beta = 2.;
 int maxiter = 100;     // maximum number of iterations
-real ratiomax = 5;
+// ------------
 
-// --------------------------------------------- isotropic tensor field
 func alpha = 1.;
-func gamma = 1;
-func nux   = 1.0;
-func nuy   = 0.0;
+func gamma = (cos(4 * pi * (y - x)) + 2);
+func nux   = 1. / sqrt(2);
+func nuy   = 1. / sqrt(2);
 // tensor components [d11, d12, d22]
 func d11 = alpha * (nux^2 * gamma + nuy^2 / gamma);
 func d12 = alpha * (nux * nuy * (gamma - 1. / gamma));
@@ -67,24 +71,24 @@ for(int niter = 0; niter < maxiter; niter ++) {
     // build metric from tensor field as
     // M = R^\top * diag(1/(gamma^beta * alpha * hmax^2), gamma^beta / (alpha * hmax^2)) * R
 
-    VhP1 gammabetaN = pow(gammaN, beta);                  // gamma^beta
-    VhP1 sqlaK = alphaN * gammabetaN;                     // alpha * gamma^beta
-    real hmaxtilde = hmax / sqrt(sqlaK[].max);            // hmax / sqrt{alpha * gamma^beta}
-    VhP1 sqlambda1N = hmaxtilde^2 * alphaN * gammabetaN;  // 1./(gamma^beta * alpha * hmax^2)
-    VhP1 sqlambda2N = hmaxtilde^2 * alphaN / gammabetaN;  // gamma^beta / (alpha * hmax^2)
+    VhP1 gammabetaN = pow(gammaN, beta);                            // gamma^beta
+    VhP1 sqlaK = alphaN * gammabetaN;                               // alpha * gamma^beta
+    real hmaxtilde = hmax / sqrt(sqlaK[].max);                      // hmax / sqrt{alpha * gamma^beta}
+    VhP1 invsqlambda1N = 1. / (hmaxtilde^2 * alphaN * gammabetaN);  // 1./(gamma^beta * alpha * hmax^2)
+    VhP1 invsqlambda2N = gammabetaN / (hmaxtilde^2 * alphaN);       // gamma^beta / (alpha * hmax^2)
 
     // constraint on elements aspect ratio
     for (int i = 0; i < WhP1.ndof; ++i) {
-        real ratio = sqlambda1N[][i]/sqlambda2N[][i];
+        real ratio = invsqlambda2N[][i]/invsqlambda1N[][i];
         if (ratio > ratiomax) {
-           sqlambda1N[][i] = sqlambda2N[][i] * (ratiomax * ratiomax);
+            invsqlambda1N[][i] = invsqlambda2N[][i] / (ratiomax * ratiomax);
         }
     }
 
     // compute R^\top * diag(1/(gamma^beta * alpha * hmax^2), gamma^beta / (alpha * hmax^2)) * R
-    VhP1 m11N = r10N^2 * 1./sqlambda1N + r20N^2 * 1./sqlambda2N;
-    VhP1 m12N = r10N * r11N * 1./sqlambda1N + r20N * r21N * 1./sqlambda2N;
-    VhP1 m22N = r11N^2 * 1./sqlambda1N + r21N^2 * 1./sqlambda2N;
+    VhP1 m11N = r10N^2 * invsqlambda1N + r20N^2 * invsqlambda2N;
+    VhP1 m12N = r10N * r11N * invsqlambda1N + r20N * r21N * invsqlambda2N;
+    VhP1 m22N = r11N^2 * invsqlambda1N + r21N^2 * invsqlambda2N;
 
     if (plots) {
        plot(m11N, wait = true, fill = true, cmm = "m11N");
@@ -93,7 +97,7 @@ for(int niter = 0; niter < maxiter; niter ++) {
     }
 
     // BAMG adaptation
-    mesh ThAdapt = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], nbvx = nbvx); 
+    mesh ThAdapt = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], nbvx = nbvx);
     if (plots) plot(Th, fill = false, wait = false);
 
     // reproject tensor on adapted mesh
@@ -111,7 +115,7 @@ for(int niter = 0; niter < maxiter; niter ++) {
     r10V.resize(m); r11V.resize(m); r20V.resize(m); r21V.resize(m);
     
     decomposeTensorField(
-        d11VNew, d12VNew, d22VNew,             // inputs
+        d11VNew, d12VNew, d22VNew,       // inputs
         ev0, ev1, r10V, r11V, r20V, r21V // outputs
     );
 
@@ -119,7 +123,7 @@ for(int niter = 0; niter < maxiter; niter ++) {
         alphaV[i] = sqrt(ev0[i] * ev1[i]);
         gammaV[i] = ev0[i] / alphaV[i];
     }
-
+    
     // update tensor data and mesh
     d11V = d11VNew;
     d12V = d12VNew;
@@ -137,4 +141,4 @@ cout << "Number of triangles: " << Th.nt << endl;
 cout << "Number of nodes: " << Th.nv << endl;
 
 // save computed mesh
-if (store) { savemesh(Th, "tensor_metric_"+hmax+".mesh"); }
+if (store) savemesh(Th, "tensor_metric_"+hmax+".mesh");

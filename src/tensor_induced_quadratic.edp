@@ -1,20 +1,24 @@
+// 
+// tensor-induced metric based adaptation, quadratic field
+//
+
 include "utils.edp"
 
 // Options ----
 verbosity = 0;
 bool store = false;    // whether to store final computed mesh
 bool plots = false;    // whether to display intermediate plots
-real hmax = 7.5e-2;    // factor controlling largest element diameter
+real hmax = 7.5e-2;    // maximum element size
+real ratiomax = 2;     // maximum element aspect-ratio
 int nbvx = 1e6;
 real beta = 2.;
 int maxiter = 100;     // maximum number of iterations
-real ratiomax = 2.5;
+// ------------
 
-// ------------------------------------------- anisotropic tensor field -- linear
 func alpha = 1.;
-func gamma = (cos(4 * pi * (y - x)) + 2);
-func nux   = 1. / sqrt(2);
-func nuy   = 1. / sqrt(2);
+func gamma = (cos(4 * pi * (y - x^2)) + 2);
+func nux   = 1. / sqrt(4 * x^2 + 1);
+func nuy   = 2 * x / sqrt(4 * x^2 + 1);
 // tensor components [d11, d12, d22]
 func d11 = alpha * (nux^2 * gamma + nuy^2 / gamma);
 func d12 = alpha * (nux * nuy * (gamma - 1. / gamma));

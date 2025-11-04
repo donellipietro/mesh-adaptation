@@ -1,17 +1,21 @@
+// 
+// isotropic recovery based adaptation, quadratic field
+//
+
 include "utils.edp"
 
 // Options ----
 verbosity = 0;
 bool store = false;    // whether to store final computed mesh
 bool plots = false;    // whether to display intermediate plots
-real hmax = 1e-1;
-real hmin = 5e-3;
+real hmax = 1e-1;      // maximum element size
+real hmin = 5e-3;      // minimum element size
 int nbvx = 1e6;
 real TOL = 0.5;
 int maxiter = 200;     // maximum number of iterations
 real trf = 0.9;        // tolerance reduction factor
+// ------------
 
-// ------------------------------------------- anisotropic tensor field -- quadratic
 func alpha = 1.;
 func gamma = (cos(4 * pi * (y - x^2)) + 2);
 func nux   = 1. / sqrt(4 * x^2 + 1);
