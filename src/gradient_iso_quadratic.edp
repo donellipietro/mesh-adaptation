@@ -11,7 +11,7 @@ bool plots = false;    // whether to display intermediate plots
 real hmax = 5e-2;      // maximum element size
 real hmin = 1e-3;      // minimum element size
 int nbvx = 1e6;
-real TOL = 0.3;
+real TOL = 0.15;
 int maxiter = 200;     // maximum number of iterations
 real trf = 0.9;        // tolerance reduction factor
 // ------------
