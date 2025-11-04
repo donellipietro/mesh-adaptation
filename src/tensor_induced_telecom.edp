@@ -8,8 +8,8 @@ include "utils.edp"
 verbosity = 0;
 bool store = false;    // whether to store final computed mesh
 bool plots = false;    // whether to display intermediate plots
-real hmax = 7.5*1e2;   // maximum element size
-real ratiomax = 2;     // maximum element aspect ratio
+real hmax = 5.5e2;     // maximum element size
+real ratiomax = 250;   // maximum element aspect ratio
 int nbvx = 1e6;
 real beta = 2;
 int maxiter = 100;     // maximum number of iterations

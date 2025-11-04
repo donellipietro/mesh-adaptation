@@ -8,28 +8,21 @@ include "utils.edp"
 verbosity = 0;
 bool store = false;    // whether to store final computed mesh
 bool plots = false;    // whether to display intermediate plots
-real hmax = 1.5e-1;    // maximum element size
-real ratiomax = 2;     // maximum element aspect ratio
+real hmax = 10;        // maximum element size
+real ratiomax = 5;     // maximum element aspect ratio
 int nbvx = 1e6;
 real beta = 4.;
 int maxiter = 100;     // maximum number of iterations
 // ------------
 
 // build Delaunay mesh of convex hull
-mesh Th = triangulate("data/dti/nodes.txt");
-if (plots) plot(Th, wait = true, cmm = "Starting point");
+mesh Th = readmesh("data/dti/brain.mesh");
+plot(Th, wait = true, cmm = "Starting point");
 
 fespace VhP1(Th, P1); // piecewise linear elements
 int n = VhP1.ndof;
 
-// load alpha factor
-VhP1 alpha;
-{
-    ifstream file("data/dti/alpha.txt");
-    for(int i = 0; i < n; i++){
-        file >> alpha[][i];
-    }
-}
+func alpha = 1.;
 // load tensor field [d11, d12, d22] evaluated at data/tensor/nodes.txt
 VhP1 d11, d12, d22;
 {
@@ -66,6 +59,8 @@ for(int i = 0; i < n; ++i) {
 
 // start adaptation loop
 for(int niter = 0; niter < maxiter; niter ++) {
+
+    cout << niter << "/" << maxiter << endl;
 
     // build finite element representation
     fespace WhP1(Th, P1);
@@ -109,7 +104,7 @@ for(int niter = 0; niter < maxiter; niter ++) {
 
     // BAMG adaptation
     mesh ThAdapt = adaptmesh(Th, metric = [m11N[], m12N[], m22N[]], nbvx = nbvx); 
-    if (plots) plot(Th, fill = false, wait = false);
+    plot(Th, fill = false, wait = false);
 
     // reproject tensor on adapted mesh
     fespace WhP1Adapt(ThAdapt, P1);
